@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
 import type { NodeId } from "../core/ids";
 import {
   IDENTITY,
@@ -46,15 +46,25 @@ type Gesture =
   /** Dragging a node: only that node's geometry changes. */
   | { readonly kind: "move"; readonly id: NodeId };
 
-export function Canvas({
-  doc,
-  onChange,
-  saveState,
-}: {
+/**
+ * What the shell above can ask the canvas for.
+ *
+ * ONE METHOD, AND IT IS HERE RATHER THAN LIFTED because it needs two things
+ * that live together in this component and nowhere else: the viewport, and the
+ * surface element's actual size. Lifting the viewport to the shell would mean
+ * the shell also measuring an element it does not own, to answer a question
+ * only the canvas can answer.
+ */
+export interface CanvasHandle {
+  /** The world point at the middle of what is currently on screen. */
+  centre: () => { x: number; y: number };
+}
+
+export const Canvas = forwardRef<CanvasHandle, {
   doc: SpatialDocument;
   onChange: (next: SpatialDocument) => void;
   saveState: SaveState;
-}) {
+}>(function Canvas({ doc, onChange, saveState }, handle) {
   const [view, setView] = useState<Viewport>(IDENTITY);
 
   /* The viewport, readable from an event handler without going through a state
@@ -138,6 +148,21 @@ export function Canvas({
     setView((current) => panByScreenDelta(current, -event.deltaX, -event.deltaY));
   }, []);
 
+  useImperativeHandle(
+    handle,
+    () => ({
+      centre: () => {
+        const element = surface.current;
+        /* No element means nothing is on screen to be in the middle of, and
+           the world origin is the least surprising answer. */
+        if (element === null) return screenToWorld({ x: 0, y: 0 }, viewRef.current);
+        const { width, height } = element.getBoundingClientRect();
+        return screenToWorld({ x: width / 2, y: height / 2 }, viewRef.current);
+      },
+    }),
+    [],
+  );
+
   const origin = screenToWorld({ x: 0, y: 0 }, view);
 
   return (
@@ -183,4 +208,4 @@ export function Canvas({
       </p>
     </div>
   );
-}
+});

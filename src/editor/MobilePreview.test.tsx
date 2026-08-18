@@ -1,6 +1,4 @@
 // @vitest-environment jsdom
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeFixture } from "../core/fixture";
@@ -52,56 +50,51 @@ function mount() {
 }
 
 const toggle = (): HTMLElement => screen.getByRole("button", { name: /mobile/i });
+
+/** Opens the preview, which now starts closed and is absent until it is. */
+const open = (): void => {
+  if (toggle().getAttribute("aria-expanded") !== "true") fireEvent.click(toggle());
+};
+
 const body = (): HTMLElement => {
   const element = document.getElementById("mobile-preview-body");
   if (element === null) throw new Error("the preview body is not in the document");
   return element;
 };
 
-describe("the preview's open/closed contract", () => {
-  it("starts open", () => {
+describe("closed means gone, not empty", () => {
+  it("starts closed, with no preview in the document at all", () => {
     mount();
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
-    expect(body().hidden).toBe(false);
-  });
-
-  it("closes and reopens on click", () => {
-    mount();
-    fireEvent.click(toggle());
     expect(toggle().getAttribute("aria-expanded")).toBe("false");
-    expect(body().hidden).toBe(true);
-
-    fireEvent.click(toggle());
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
-    expect(body().hidden).toBe(false);
+    expect(document.getElementById("mobile-preview-body")).toBeNull();
+    expect(screen.queryByRole("complementary", { name: /mobile preview/i })).toBeNull();
   });
 
-  it("marks the panel closed so the stylesheet can release its width", () => {
-    /* `data-open` is the hook the width rule keys on. jsdom cannot measure the
-       result, but it CAN prove the attribute the rule depends on actually
-       flips — half of the regression, and the half that lives in TSX. */
+  it("removes the whole panel when closed, not just its contents", () => {
+    /* THE REGRESSION THIS EXISTS FOR. The preview used to keep its column
+       after collapsing — contents gone, 103px of empty panel still sitting
+       beside the canvas. It was a CSS fault and jsdom could not see it, so it
+       was guarded by reading the stylesheet as text.
+
+       Making "closed" mean NOT RENDERED turned that into something the DOM can
+       answer, which is a better guard than the one it replaces: the panel
+       element itself has to be absent. */
     mount();
-    const panel = body().closest("aside");
-    expect(panel).not.toBeNull();
-    expect(panel?.hasAttribute("data-open")).toBe(true);
+    open();
+    const panel = screen.getByRole("complementary", { name: /mobile preview/i });
+    expect(panel.isConnected).toBe(true);
 
     fireEvent.click(toggle());
-    expect(panel?.hasAttribute("data-open")).toBe(false);
+    expect(panel.isConnected).toBe(false);
+    expect(screen.queryByRole("complementary", { name: /mobile preview/i })).toBeNull();
   });
 
-  it("removes a collapsed preview from the accessibility tree entirely", () => {
-    /* `hidden` rather than a class that merely paints it away: a collapsed
-       panel a screen reader still walks into, or the keyboard still tabs
-       through, is not collapsed. */
-    /* Scoped to the preview. The CANVAS renders the same image node, so an
-       unscoped query finds it there and the assertion passes or fails for
-       entirely the wrong reason — which is what it did the first time. */
+  it("reopens", () => {
     mount();
-    expect(within(body()).queryByRole("img")).not.toBeNull();
-
+    open();
     fireEvent.click(toggle());
-    expect(within(body()).queryByRole("img")).toBeNull();
-    expect(body().hidden).toBe(true);
+    open();
+    expect(body()).not.toBeNull();
   });
 });
 
@@ -115,23 +108,23 @@ describe("the ⌘⇧M shortcut", () => {
     /* jsdom reports a non-Mac user agent, so Ctrl is the modifier here — the
        same branch a Windows or Linux visitor takes. */
     press({ ctrlKey: true, shiftKey: true });
-    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
 
     press({ ctrlKey: true, shiftKey: true });
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
   });
 
   it("ignores the chord without shift, which is the minimise binding", () => {
     /* ⌘M is the macOS window-minimise shortcut and must never be ours. */
     mount();
     press({ ctrlKey: true });
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
   });
 
   it("ignores a bare M, so typing cannot toggle panels", () => {
     mount();
     press({});
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
   });
 
   it("does not fire while a text field has focus", () => {
@@ -143,14 +136,14 @@ describe("the ⌘⇧M shortcut", () => {
     input.focus();
 
     fireEvent.keyDown(input, { key: "M", ctrlKey: true, shiftKey: true });
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
     input.remove();
   });
 
   it("ignores a key repeat, so a held chord cannot flap the panel", () => {
     mount();
     press({ ctrlKey: true, shiftKey: true, repeat: true });
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
   });
 });
 
@@ -159,6 +152,7 @@ describe("what the preview shows", () => {
     /* The preview must present the RESOLVED order, not the document's paint
        order — that is the whole point of it being derived. */
     const { doc } = mount();
+    open();
     const expected = resolveMobile(doc).blocks.map((block) => {
       const node = doc.nodes[block.nodeId];
       return node?.content.kind === "text" ? node.content.text : "[image]";
@@ -175,40 +169,11 @@ describe("what the preview shows", () => {
     /* §7 is architectural, not a later pass: a derived presentation that drops
        the description is an inaccessible presentation. */
     const { doc } = mount();
+    open();
     const image = Object.values(doc.nodes).find((node) => node.type === "image");
     const alt = image?.content.kind === "image" ? image.content.alt : "";
 
     expect(alt).not.toBe("");
     expect(within(body()).getByRole("img").getAttribute("alt")).toBe(alt);
-  });
-});
-
-describe("the stylesheet's collapse contract", () => {
-  /* THE REGRESSION GUARD, and it reads the CSS as text on purpose.
-     The bug was `inline-size` declared on `.panel` unconditionally, so
-     collapsing emptied the column without releasing it. jsdom resolves no
-     stylesheets and measures nothing, so the only place this is checkable
-     without a browser is the source. Narrow, and aimed at exactly one
-     mistake. */
-  /* Resolved from the project root rather than `import.meta.url`: under jsdom
-     `import.meta.url` is not a file: URL, so `fileURLToPath` refuses it. */
-  const css = readFileSync(
-    resolve(process.cwd(), "src/editor/MobilePreview.module.css"),
-    "utf8",
-  );
-
-  /** The body of a rule, given its selector. */
-  const ruleFor = (selector: string): string => {
-    const at = css.indexOf(`${selector} {`);
-    if (at === -1) throw new Error(`no rule for ${selector}`);
-    return css.slice(at, css.indexOf("}", at));
-  };
-
-  it("does not give the closed panel a width", () => {
-    expect(ruleFor(".panel")).not.toMatch(/^\s*inline-size:/m);
-  });
-
-  it("gives the open panel its width", () => {
-    expect(ruleFor(".panel[data-open]")).toMatch(/inline-size:/);
   });
 });

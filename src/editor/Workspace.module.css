@@ -1,11 +1,67 @@
-/* Canvas takes the space; the preview takes what it needs.
-   `min-inline-size: 0` on the canvas column is what stops a wide preview from
-   pushing it off-screen — a grid item's default `min-width: auto` refuses to
-   shrink below its content. */
+/* Toolbar along the top, then whatever it opened, then the stage. */
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto 1fr;
   block-size: 100%;
   min-block-size: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-block-end: 1px solid #1e1e26;
+  background-color: #0b0b0e;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: #b9b9c6;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background-color: #16161c;
+  color: #e8e8ef;
+}
+
+/* An open panel's button stays lit, so the toolbar says what is currently
+   showing rather than only offering to change it. */
+.toggle[data-open] {
+  background-color: #16161c;
+  border-color: #2a2a34;
+  color: #e8e8ef;
+}
+
+.chord {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: #6a6a78;
+}
+
+/* Canvas takes the space; the preview takes what it needs — and when the
+   preview is not rendered there is no second column at all, so the canvas has
+   the entire stage rather than the entire stage minus a strip.
+
+   `min-inline-size: 0` on the canvas column is what stops a wide preview from
+   pushing it off-screen: a grid item's default `min-width: auto` refuses to
+   shrink below its content. */
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-block-size: 0;
+}
+
+.stage[data-mobile-open] {
+  grid-template-columns: minmax(0, 1fr) auto;
 }

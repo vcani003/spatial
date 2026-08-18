@@ -1,0 +1,77 @@
+/* A row of inputs under the toolbar. Plain on purpose — this is a tool, and
+   its visual language is a decision to make against a working editor rather
+   than guess at now. */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border-block-end: 1px solid #1e1e26;
+  background-color: #0b0b0e;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+.label {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6a6a78;
+}
+
+.input {
+  min-inline-size: 0;
+  inline-size: 14rem;
+  padding: 5px 8px;
+  border: 1px solid #24242c;
+  border-radius: 4px;
+  background-color: #0e0e11;
+  color: #e8e8ef;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.input:focus-visible {
+  outline: 1px solid #6e8cff;
+  outline-offset: 1px;
+}
+
+.input[aria-invalid] {
+  border-color: #7a5a5a;
+}
+
+.add {
+  padding: 5px 12px;
+  border: 1px solid #24242c;
+  border-radius: 4px;
+  background-color: #16161c;
+  color: #b9b9c6;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.add:hover:not(:disabled) {
+  color: #e8e8ef;
+  border-color: #34343f;
+}
+
+.add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.problem {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  color: #d8b4b4;
+}

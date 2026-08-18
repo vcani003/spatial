@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveMobile } from "../core/mobile";
 import type { SpatialDocument } from "../core/schema";
-import { modLabel } from "./useHotkey";
 import styles from "./MobilePreview.module.css";
 
 /**
@@ -22,6 +21,10 @@ import styles from "./MobilePreview.module.css";
  * this on the very same render. §4 spends a whole section on why a copied
  * mobile canvas becomes a merge problem; the way to never have that problem is
  * to never have a second copy, and this is what that looks like in practice.
+ *
+ * IT IS NOT RENDERED WHEN CLOSED. The toolbar owns the toggle now, so a
+ * collapsed preview is absent rather than an empty column — see `Workspace`.
+ * That is why nothing here knows about an open state at all.
  *
  * IT IS READ-ONLY, and that is the honest state of it today. Nothing here can
  * be dragged, selected or reordered, because an author override that could be
@@ -61,15 +64,7 @@ const VIEWPORT_WIDTH = 390;
 const MAX_SCALE = 1;
 const MIN_SCALE = 0.5;
 
-export function MobilePreview({
-  doc,
-  open,
-  onToggle,
-}: {
-  doc: SpatialDocument;
-  open: boolean;
-  onToggle: () => void;
-}) {
+export function MobilePreview({ doc }: { doc: SpatialDocument }) {
   /* Recomputed only when the document actually changes — panning and zooming
      the canvas must not re-run the resolver, and they change `Canvas` state
      rather than `doc`. */
@@ -96,30 +91,11 @@ export function MobilePreview({
     return () => {
       observer.disconnect();
     };
-  }, [open]);
+  }, []);
 
   return (
-    <aside className={styles.panel} data-open={open ? "" : undefined}>
-      <header className={styles.bar}>
-        <button
-          type="button"
-          className={styles.toggle}
-          aria-expanded={open}
-          aria-controls="mobile-preview-body"
-          onClick={onToggle}
-        >
-          Mobile
-          {/* The shortcut, shown rather than hidden in a menu that does not
-              exist yet. `aria-hidden` because a screen reader user is told
-              about the control by the button itself, and "⌘ ⇧ M" read aloud
-              as characters is noise. */}
-          <span className={styles.chord} aria-hidden="true">
-            {modLabel()}⇧M
-          </span>
-        </button>
-      </header>
-
-      <div id="mobile-preview-body" className={styles.body} hidden={!open}>
+    <aside className={styles.panel} aria-label="Mobile preview">
+      <div id="mobile-preview-body" className={styles.body}>
         {/* The measured box, and the device inside it.
 
             `zoom` RATHER THAN `transform: scale()`, and the difference is the

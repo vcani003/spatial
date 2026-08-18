@@ -4,74 +4,27 @@
 
 .panel {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: 1fr;
   min-block-size: 0;
   border-inline-start: 1px solid #1e1e26;
   background-color: #0b0b0e;
 
-  /* COLLAPSED, IT IS ONLY ITS OWN BAR. `inline-size` is deliberately NOT set
-     here: an unconditional width made the panel keep its whole column after
-     collapsing, so the contents vanished and the space did not come back —
-     which is not a collapse, it is an empty room. Width belongs to the open
-     state alone. */
-}
+  /* HOW MUCH OF THE WORKSPACE THE PREVIEW MAY TAKE.
+     It was once sized by its contents — 423px, which on an 861px window left
+     the canvas 438px. Half the workspace, and worse under browser zoom, where
+     the viewport shrinks in CSS pixels and a fixed 390 becomes a larger share
+     of it.
 
-/* HOW MUCH OF THE WORKSPACE THE PREVIEW MAY TAKE WHILE OPEN.
-   It used to be whatever a 390px device plus padding came to — 423px, which on
-   an 861px window left the canvas 438px. The preview was half the workspace and
-   could not give any of it back, and under browser zoom (where the viewport
-   shrinks in CSS pixels) it only got worse.
-
-   A third of the width, floored so it stays readable and capped so it does not
-   sprawl on a wide monitor. The device inside scales to fit whatever this
-   resolves to. */
-.panel[data-open] {
+     A third of the width, floored so it stays readable and capped so it does
+     not sprawl on a wide monitor. The device inside scales to fit whatever
+     this resolves to. When the preview is closed this element does not exist,
+     so the canvas gets the whole stage. */
   inline-size: clamp(15rem, 33vw, 27rem);
 }
 
-.bar {
-  padding: 8px;
-  border-block-end: 1px solid #1e1e26;
-}
-
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  inline-size: 100%;
-  padding: 6px 8px;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: #b9b9c6;
-  font-family: ui-sans-serif, system-ui, sans-serif;
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  text-align: start;
-  cursor: pointer;
-}
-
-.toggle:hover {
-  background-color: #16161c;
-  color: #e8e8ef;
-}
-
-.chord {
-  margin-inline-start: auto;
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
-  color: #6a6a78;
-}
-
-/* `hidden` on the body does the work, so the collapsed state is genuinely
-   absent from the accessibility tree rather than merely invisible. */
 .body {
   overflow: auto;
   padding: 16px;
-}
-
-.body[hidden] {
-  display: none;
 }
 
 /* The device. A plain column with real margins — not a phone bezel, which

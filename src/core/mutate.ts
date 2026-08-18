@@ -1,6 +1,6 @@
 import type { NodeId } from "./ids";
 import { newRevisionId } from "./ids";
-import type { SpatialDocument } from "./schema";
+import type { SpatialDocument, SpatialNode } from "./schema";
 
 /**
  * =============================================================================
@@ -27,6 +27,24 @@ import type { SpatialDocument } from "./schema";
  * the stale/conflicted machinery need a revision that actually moves, and a
  * revision that only updates on save is one that lies between saves.
  */
+
+/**
+ * Adds a node, on top of everything already there.
+ *
+ * On top because a thing you just made is a thing you are about to work with,
+ * and finding it underneath something else is indistinguishable from it not
+ * having been created. Paint order only — §21 keeps that apart from reading
+ * order, and the mobile resolver will place this by geometry like everything
+ * else.
+ */
+export function addNode(doc: SpatialDocument, node: SpatialNode): SpatialDocument {
+  return {
+    ...doc,
+    revisionId: newRevisionId(),
+    nodes: { ...doc.nodes, [node.id]: node },
+    paintOrder: [...doc.paintOrder, node.id],
+  };
+}
 
 /** Moves a node's desktop geometry by a delta in WORLD units. */
 export function moveNodeBy(
