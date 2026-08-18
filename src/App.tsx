@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { InMemoryRepository } from "./core/repository";
 import { deserialize, serialize } from "./core/serialize";
 import { IndexedDbRepository, hasIndexedDb } from "./adapters/indexedDb";
-import { Canvas } from "./editor/Canvas";
+import { Workspace } from "./editor/Workspace";
 import { useDocument } from "./useDocument";
 
 /**
@@ -29,5 +29,5 @@ export function App() {
      so this is a frame or two — a spinner would flash and say nothing. */
   if (document === null) return null;
 
-  return <Canvas doc={document} onChange={change} saveState={saveState} />;
+  return <Workspace doc={document} onChange={change} saveState={saveState} />;
 }

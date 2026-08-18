@@ -1,0 +1,11 @@
+/* Canvas takes the space; the preview takes what it needs.
+   `min-inline-size: 0` on the canvas column is what stops a wide preview from
+   pushing it off-screen — a grid item's default `min-width: auto` refuses to
+   shrink below its content. */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  block-size: 100%;
+  min-block-size: 0;
+}

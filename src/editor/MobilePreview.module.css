@@ -1,0 +1,88 @@
+/* The preview sits beside the canvas and takes its width from its contents, so
+   collapsing it genuinely gives the canvas the space back rather than leaving
+   an empty column. */
+
+.panel {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-block-size: 0;
+  border-inline-start: 1px solid #1e1e26;
+  background-color: #0b0b0e;
+}
+
+.bar {
+  padding: 8px;
+  border-block-end: 1px solid #1e1e26;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  inline-size: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #b9b9c6;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-align: start;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background-color: #16161c;
+  color: #e8e8ef;
+}
+
+.chord {
+  margin-inline-start: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: #6a6a78;
+}
+
+/* Collapsed, the panel is just its bar. `hidden` on the body does the work, so
+   the collapsed state is genuinely absent from the accessibility tree rather
+   than merely invisible. */
+.body {
+  overflow: auto;
+  padding: 16px;
+}
+
+.body[hidden] {
+  display: none;
+}
+
+/* The device. A plain column with real margins — not a phone bezel, which
+   would be decoration pretending to be information. */
+.device {
+  margin-inline: auto;
+  padding: 20px 16px;
+  border-radius: 10px;
+  background-color: #0e0e11;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.block {
+  min-inline-size: 0;
+}
+
+.text {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #e8e8ef;
+  overflow-wrap: anywhere;
+}
+
+.image {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+}
