@@ -73,3 +73,9 @@
   color: #8a8a99;
   pointer-events: none;
 }
+
+/* The one state worth interrupting for. Not a colour — the site has none —
+   just full contrast against a readout that is otherwise deliberately dim. */
+.trouble {
+  color: #e8e8ef;
+}

@@ -1,20 +1,33 @@
-import { useState } from "react";
-import { makeFixture } from "./core/fixture";
-import type { SpatialDocument } from "./core/schema";
+import { useMemo } from "react";
+import { InMemoryRepository } from "./core/repository";
+import { deserialize, serialize } from "./core/serialize";
+import { IndexedDbRepository, hasIndexedDb } from "./adapters/indexedDb";
 import { Canvas } from "./editor/Canvas";
+import { useDocument } from "./useDocument";
 
 /**
- * The proof-of-concept shell.
+ * The shell.
  *
- * The document is React state HERE ONLY, and only because there is no
- * repository yet. §19 lists "persisting React state" as a trap precisely
- * because it turns renderer refactors into data migrations — so what is held
- * here is a plain `SpatialDocument` value that `core` produced and that a
- * `DocumentRepository` will hand over unchanged once it exists. Nothing about
- * the document's shape is React's.
+ * IT CHOOSES A REPOSITORY AND THEN FORGETS WHICH ONE. Everything below takes
+ * the `DocumentRepository` interface, so IndexedDB, the in-memory fallback,
+ * and a future API adapter are interchangeable here and invisible everywhere
+ * else — which is the whole return on §13's abstraction.
+ *
+ * The fallback matters: private browsing and some embedded webviews have no
+ * IndexedDB at all. The honest response is a canvas that works and does not
+ * persist, not a canvas that fails to start.
  */
 export function App() {
-  const [doc, setDoc] = useState<SpatialDocument>(makeFixture);
+  const repository = useMemo(
+    () => (hasIndexedDb() ? new IndexedDbRepository() : new InMemoryRepository({ serialize, deserialize })),
+    [],
+  );
 
-  return <Canvas doc={doc} onChange={setDoc} />;
+  const { document, saveState, change } = useDocument(repository);
+
+  /* Nothing is rendered until there is a document. It is one IndexedDB read,
+     so this is a frame or two — a spinner would flash and say nothing. */
+  if (document === null) return null;
+
+  return <Canvas doc={document} onChange={change} saveState={saveState} />;
 }

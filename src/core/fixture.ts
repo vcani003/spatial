@@ -16,7 +16,7 @@ import { SCHEMA_VERSION, type SpatialDocument, type SpatialNode } from "./schema
  */
 export function makeFixture(): SpatialDocument {
   const entries: readonly SpatialNode[] = [
-    node("text", { kind: "text", text: "Spatial" }, { x: 80, y: 60, width: 320, height: 72 }),
+    node("text", { kind: "text", text: "Spatial" }, { x: 80, y: 60, width: 320 }),
     node(
       "text",
       {
@@ -25,8 +25,10 @@ export function makeFixture(): SpatialDocument {
           "An infinite canvas where position is presentation, not meaning. " +
           "Drag a node: its geometry moves and nothing else does.",
       },
-      { x: 80, y: 160, width: 380, height: 120 },
+      { x: 80, y: 160, width: 380 },
     ),
+    /* The only authored height in the fixture, and the only node that should
+       have one: an image is a box the author sized. */
     node(
       "image",
       {
@@ -39,7 +41,7 @@ export function makeFixture(): SpatialDocument {
     node(
       "text",
       { kind: "text", text: "figure 1 — a caption that is not yet semantically attached to anything" },
-      { x: 520, y: 306, width: 300, height: 48 },
+      { x: 520, y: 306, width: 300 },
     ),
   ];
 

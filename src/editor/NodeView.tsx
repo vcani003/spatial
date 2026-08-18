@@ -30,7 +30,10 @@ export function NodeView({
     <div
       className={styles.node}
       data-selected={selected ? "" : undefined}
-      style={{ transform: `translate(${x}px, ${y}px)`, width, height }}
+      /* An absent height is intrinsic, so it must not reach the DOM as
+         `height: undefined` — it simply is not set, and the box takes the
+         height of the words inside it. */
+      style={{ transform: `translate(${x}px, ${y}px)`, width, ...(height === undefined ? {} : { height }) }}
       onPointerDown={(event) => {
         onPointerDown(event, node.id);
       }}

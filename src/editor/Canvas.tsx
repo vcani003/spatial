@@ -9,6 +9,7 @@ import {
 } from "../core/viewport";
 import { bringToFront, moveNodeBy } from "../core/mutate";
 import { type SpatialDocument, nodesInPaintOrder } from "../core/schema";
+import type { SaveState } from "../useDocument";
 import { NodeView } from "./NodeView";
 import styles from "./Canvas.module.css";
 
@@ -48,9 +49,11 @@ type Gesture =
 export function Canvas({
   doc,
   onChange,
+  saveState,
 }: {
   doc: SpatialDocument;
   onChange: (next: SpatialDocument) => void;
+  saveState: SaveState;
 }) {
   const [view, setView] = useState<Viewport>(IDENTITY);
   const [selected, setSelected] = useState<NodeId | null>(null);
@@ -157,8 +160,14 @@ export function Canvas({
         ))}
       </div>
 
+      {/* Zoom, and whether the work is safe. The save state is only ever
+          SHOWN when it is not "saved" — a canvas that constantly reassures you
+          it saved is a canvas you start reading instead of using, and the
+          only genuinely useful state here is the one where something went
+          wrong. */}
       <p className={styles.readout}>
         {Math.round(view.zoom * 100)}%
+        {saveState === "error" && <span className={styles.trouble}> · not saving</span>}
       </p>
     </div>
   );

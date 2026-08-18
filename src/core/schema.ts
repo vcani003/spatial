@@ -53,12 +53,36 @@ export type NodeContent =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "image"; readonly src: string; readonly alt: string };
 
-/** Where a node sits on the desktop canvas, in world units. */
+/**
+ * Where a node sits on the desktop canvas, in world units.
+ *
+ * HEIGHT IS OPTIONAL, AND THAT IS THE POC'S FIRST LESSON ABOUT THE SCHEMA.
+ *
+ * The fixture authored a height for every node, including text. Text reflows
+ * and a fixed box does not, so the two disagree the moment anyone types: the
+ * box either clips the words or leaves a gap under them, and nothing in the
+ * document records which of those the author meant.
+ *
+ *   height: number      the author sized this box and means it. Media, mostly:
+ *                       an image has an intrinsic aspect and a chosen size.
+ *   height: undefined   INTRINSIC. The content decides, and the renderer is
+ *                       the only thing that knows how tall the words came out.
+ *
+ * Width stays required for both. "Fixed width, automatic height" is what a
+ * paragraph on a canvas actually is — it is the measure that is authored, and
+ * the depth follows from it.
+ *
+ * §4.2 already assumes this: "edit text content → re-measure and reflow". A
+ * height that is always present has no way to express a node that reflows,
+ * so the mobile planner would have had to guess which heights were real.
+ * Settling it now costs nothing; settling it after the first save is a
+ * migration.
+ */
 export interface DesktopPlacement {
   readonly x: number;
   readonly y: number;
   readonly width: number;
-  readonly height: number;
+  readonly height?: number;
 }
 
 /**
