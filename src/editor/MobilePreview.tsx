@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveMobile } from "../core/mobile";
 import type { SpatialDocument } from "../core/schema";
 import { modLabel } from "./useHotkey";
@@ -37,8 +37,29 @@ import styles from "./MobilePreview.module.css";
  * before a line of it is written.
  */
 
-/** Roughly a phone at 1:1, so the preview reads as a device rather than a list. */
+/**
+ * The width being previewed, in CSS pixels. Roughly a phone.
+ *
+ * THIS IS A LOGICAL SIZE AND IT NEVER CHANGES. The preview is only worth
+ * having if it reflows at a real phone width — the moment the device box
+ * shrinks to fit its panel, the text rewraps and you are previewing a 280px
+ * viewport nobody has. So the box stays 390 and is SCALED to fit instead.
+ */
 const VIEWPORT_WIDTH = 390;
+
+/**
+ * How much the device may be scaled visually.
+ *
+ * Never above 1. Magnifying the preview past 1:1 makes it the loudest thing on
+ * screen and tells you nothing a phone would actually show — and under browser
+ * zoom, where the viewport shrinks in CSS pixels, an uncapped scale is exactly
+ * how the panel ends up dominating the workspace.
+ *
+ * The floor stops it collapsing into an unreadable thumbnail on a narrow
+ * window; below that the panel is better collapsed with the shortcut.
+ */
+const MAX_SCALE = 1;
+const MIN_SCALE = 0.5;
 
 export function MobilePreview({
   doc,
@@ -53,6 +74,29 @@ export function MobilePreview({
      the canvas must not re-run the resolver, and they change `Canvas` state
      rather than `doc`. */
   const resolved = useMemo(() => resolveMobile(doc), [doc]);
+
+  /* Fit the device to whatever width the panel actually got.
+     A ResizeObserver rather than a media query, because what matters is the
+     PANEL's width — which changes with the window, with browser zoom, and one
+     day with a drag handle. A breakpoint would have to guess at all three. */
+  const fitRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(MAX_SCALE);
+
+  useEffect(() => {
+    const element = fitRef.current;
+    if (element === null) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      const available = entry?.contentRect.width ?? 0;
+      if (available <= 0) return;
+      setScale(Math.min(MAX_SCALE, Math.max(MIN_SCALE, available / VIEWPORT_WIDTH)));
+    });
+
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [open]);
 
   return (
     <aside className={styles.panel} data-open={open ? "" : undefined}>
@@ -76,7 +120,20 @@ export function MobilePreview({
       </header>
 
       <div id="mobile-preview-body" className={styles.body} hidden={!open}>
-        <div className={styles.device} style={{ inlineSize: VIEWPORT_WIDTH }}>
+        {/* The measured box, and the device inside it.
+
+            `zoom` RATHER THAN `transform: scale()`, and the difference is the
+            whole reason this is simple: a transform is a paint-time effect
+            that does not change layout, so a scaled-down device would still
+            reserve its full unscaled height and leave a tall column of empty
+            space beneath itself. `zoom` scales the layout, so the box occupies
+            exactly what it appears to occupy — no measured height to correct,
+            and no second observer to keep in sync. */}
+        <div className={styles.fit} ref={fitRef}>
+          <div
+            className={styles.device}
+            style={{ inlineSize: VIEWPORT_WIDTH, zoom: scale }}
+          >
           {resolved.blocks.map((block) => {
             const node = doc.nodes[block.nodeId];
             if (node === undefined) return null;
@@ -94,7 +151,8 @@ export function MobilePreview({
                 )}
               </div>
             );
-          })}
+            })}
+          </div>
         </div>
       </div>
     </aside>

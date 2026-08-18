@@ -8,6 +8,17 @@
   min-block-size: 0;
   border-inline-start: 1px solid #1e1e26;
   background-color: #0b0b0e;
+
+  /* HOW MUCH OF THE WORKSPACE THE PREVIEW MAY TAKE.
+     It used to be whatever a 390px device plus padding came to — 423px, which
+     on an 861px window left the canvas 438px. The preview was half the
+     workspace and could not give any of it back, and under browser zoom
+     (where the viewport shrinks in CSS pixels) it only got worse.
+
+     A third of the width, floored so it stays readable and capped so it does
+     not sprawl on a wide monitor. The device inside scales to fit whatever
+     this resolves to. */
+  inline-size: clamp(15rem, 33vw, 27rem);
 }
 
 .bar {
@@ -58,6 +69,12 @@
 
 /* The device. A plain column with real margins — not a phone bezel, which
    would be decoration pretending to be information. */
+/* The measured box. Its width is what the device is fitted to. */
+.fit {
+  display: grid;
+  justify-content: center;
+}
+
 .device {
   margin-inline: auto;
   padding: 20px 16px;
