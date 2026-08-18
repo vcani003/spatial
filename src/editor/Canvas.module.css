@@ -1,0 +1,75 @@
+/* The editor's surface. Deliberately plain — this is a tool, and the visual
+   language is a later decision that should be made against a working canvas
+   rather than guessed at now. */
+
+.surface {
+  position: relative;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: hidden;
+
+  background-color: #0e0e11;
+  background-image:
+    radial-gradient(circle at 1px 1px, #24242c 1px, transparent 0);
+
+  /* The pointer is the affordance for a surface you can drag. */
+  cursor: grab;
+  /* The browser must not also pan/zoom the page under our gestures. */
+  touch-action: none;
+  /* A drag across nodes should not paint a text selection behind it. */
+  user-select: none;
+}
+
+.surface:active {
+  cursor: grabbing;
+}
+
+/* The world. One transform for every node.
+   `transform-origin: 0 0` so `scale()` grows away from the screen origin —
+   the arithmetic in `viewport.ts` assumes exactly that, and the default
+   (50% 50%) would silently offset everything by half the viewport. */
+.world {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  transform-origin: 0 0;
+}
+
+.node {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  cursor: default;
+}
+
+.node[data-selected] {
+  outline: 1px solid #6e8cff;
+  outline-offset: 3px;
+}
+
+.text {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #e8e8ef;
+}
+
+.image {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Zoom readout. Screen space, not world space — it is chrome, not content. */
+.readout {
+  position: absolute;
+  inset-block-end: 12px;
+  inset-inline-start: 12px;
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: #8a8a99;
+  pointer-events: none;
+}
