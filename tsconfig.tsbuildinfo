@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/core/fixture.ts","./src/core/ids.ts","./src/core/mutate.ts","./src/core/schema.ts","./src/core/viewport.test.ts","./src/core/viewport.ts","./src/editor/canvas.tsx","./src/editor/nodeview.tsx","./vite.config.ts"],"version":"6.0.3"}
