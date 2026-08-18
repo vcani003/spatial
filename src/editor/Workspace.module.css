@@ -1,8 +1,22 @@
 /* Toolbar along the top, then whatever it opened, then the stage. */
 
+/* FLEX, NOT GRID, AND THAT IS A BUG FIX RATHER THAN A PREFERENCE.
+
+   This was `grid-template-rows: auto auto 1fr` — a row for the toolbar, one
+   for the create bar, one for the stage. It only held while all three existed.
+   With the create bar closed there are TWO children, so the stage was
+   auto-placed into row 2 (`auto`) while the `1fr` row sat empty below it, and
+   a canvas asking for `block-size: 100%` of an auto row that is sized by its
+   own contents collapses to nothing. Measured at 700px tall: rows resolved to
+   39px / 0px / 661px, and the canvas was 0 high.
+
+   The number of rows here VARIES with which panels are open, so any rule that
+   counts them is a rule waiting to be wrong again. Flex takes the children as
+   they come: the bars size to their content, the stage takes the rest, and
+   adding a fourth panel later cannot reintroduce this. */
 .workspace {
-  display: grid;
-  grid-template-rows: auto auto 1fr;
+  display: flex;
+  flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
 }
@@ -57,9 +71,14 @@
    pushing it off-screen: a grid item's default `min-width: auto` refuses to
    shrink below its content. */
 .stage {
+  /* Takes whatever the bars above it did not. `min-block-size: 0` because a
+     flex item's default `min-height: auto` refuses to shrink below its
+     content, which would push the canvas past the bottom of the window. */
+  flex: 1;
+  min-block-size: 0;
+
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  min-block-size: 0;
 }
 
 .stage[data-mobile-open] {
