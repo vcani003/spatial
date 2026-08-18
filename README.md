@@ -101,6 +101,44 @@ presentation intent, diagnostics, persistence, undo/redo.
 3. Commands and history at the `mutate.ts` seam, with drag coalescing.
 4. Structure panel and seeded reading order (§23 step 8).
 
+## Testing
+
+**Every regression gets a test, and the test must fail without the fix.** A
+guard nobody has watched fail is a guard nobody knows works — the stylesheet
+check in `MobilePreview.test.tsx` was verified by putting the bug back and
+confirming that one test, and only that test, went red.
+
+While the project is still being built not everything needs coverage, but the
+things you touch constantly do: **viewing mobile, zoom, drag, panning.**
+
+**Name what cannot be tested rather than faking it.** jsdom implements the DOM
+but does no layout — every element measures zero, `getComputedStyle` cannot
+resolve a `clamp()` from a CSS module. So the cursor-anchored zoom, the
+preview's fit-to-panel scale, and "a collapsed panel gives its width back" are
+all unassertable here, and each is named in the test file that would otherwise
+appear to cover it. Mocking a rect to make them pass writes a test that agrees
+with whatever the code currently does. Those are verified in a real browser and
+the measurements recorded in the commit that changed them.
+
+There is no separate document tracking this. The tests are the record, and each
+regression's story belongs in a comment on the test that catches it.
+
+```
+src/core/*.test.ts       node, no DOM — the standing proof core is framework-free
+src/editor/*.test.tsx    jsdom, opted in per file with a docblock
+src/test/setup.ts        stubs for what jsdom lacks, each explaining itself
+```
+
+Two bugs were found by writing these rather than by using the app:
+
+- **A dropped frame during drag.** `onChange` was called inside a `setView`
+  updater — a side effect in React's render phase — and five pointer moves of
+  +10 landed a node at +40. React may call an updater more than once or defer
+  it; neither survives "and also mutate the document while you are in there".
+  The zoom now comes from a ref.
+- **Two assertions that passed for the wrong reason.** The canvas renders the
+  same image node as the preview, so an unscoped `ByRole("img")` matched twice.
+
 ## Running it
 
 ```bash

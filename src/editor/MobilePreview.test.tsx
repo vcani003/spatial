@@ -41,25 +41,6 @@ import { Workspace } from "./Workspace";
 
 afterEach(cleanup);
 
-/**
- * jsdom implements no `ResizeObserver`, and the preview uses one to fit the
- * device to its panel. A stub rather than a polyfill: jsdom does no layout, so
- * a real observer would only ever report zero and the scale it produced would
- * be meaningless. The fitting behaviour needs a browser to test; what these
- * tests cover is everything around it, which should not be blocked by a
- * missing global.
- */
-class StubResizeObserver implements ResizeObserver {
-  observe(): void {
-    /* Never fires. The component keeps its initial scale, which is correct
-       for an environment with nothing to measure. */
-  }
-  unobserve(): void {}
-  disconnect(): void {}
-}
-
-globalThis.ResizeObserver = StubResizeObserver;
-
 const noop = (): void => undefined;
 
 function mount() {

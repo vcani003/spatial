@@ -56,6 +56,13 @@ export function Canvas({
   saveState: SaveState;
 }) {
   const [view, setView] = useState<Viewport>(IDENTITY);
+
+  /* The viewport, readable from an event handler without going through a state
+     updater. Kept in step during render rather than in an effect, so a handler
+     that fires before effects flush still sees the zoom the user is looking
+     at. */
+  const viewRef = useRef<Viewport>(view);
+  viewRef.current = view;
   const [selected, setSelected] = useState<NodeId | null>(null);
   const gesture = useRef<Gesture>({ kind: "idle" });
   const surface = useRef<HTMLDivElement>(null);
@@ -73,13 +80,18 @@ export function Canvas({
         return;
       }
 
-      /* Divide by zoom: a node must stay under the pointer at every zoom
-         level. This is the same arithmetic `panByScreenDelta` does, and it is
-         the same bug if it is forgotten. */
-      setView((current) => {
-        onChange(moveNodeBy(doc, active.id, event.movementX / current.zoom, event.movementY / current.zoom));
-        return current;
-      });
+      /* THE ZOOM COMES FROM A REF, NOT FROM A STATE UPDATER.
+         This used to read the current zoom by calling `setView` and doing the
+         work inside the updater — which put a side effect in React's render
+         phase, and dropped frames: five pointer moves of +10 landed a node at
+         +40. React is free to call an updater more than once, or to defer it,
+         and neither is compatible with "and also mutate the document while
+         you are in there".
+
+         Divide by zoom: a node must stay under the pointer at every zoom
+         level. Same arithmetic `panByScreenDelta` does, same bug if forgotten. */
+      const { zoom } = viewRef.current;
+      onChange(moveNodeBy(doc, active.id, event.movementX / zoom, event.movementY / zoom));
     },
     [doc, onChange],
   );
