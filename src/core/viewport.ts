@@ -110,3 +110,94 @@ export function zoomAtScreenPoint(
     pan: { x: world.x - anchor.x / zoom, y: world.y - anchor.y / zoom },
   };
 }
+
+
+/* =============================================================================
+   FINDING YOUR WAY BACK
+   ============================================================================= */
+
+/** A rectangle in world space. */
+export interface Bounds {
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}
+
+/**
+ * Air left around the content when framing it, in SCREEN pixels.
+ *
+ * Screen rather than world on purpose: it is breathing room in the window, so
+ * it should look the same however far out the result ends up zoomed.
+ */
+export const FIT_PADDING = 64;
+
+/**
+ * The viewport that frames `bounds` inside a viewport of `size`.
+ *
+ * ── IT NEVER MAGNIFIES ──────────────────────────────────────────────────────
+ *
+ * Zoom is capped at 1 even when the content would fit at 4×. "Fit" means see
+ * everything, not fill the screen with one word — a canvas holding a single
+ * short line should not answer with that line at 400%. Zooming further in is
+ * what the wheel is for.
+ *
+ * Empty or degenerate bounds return the viewport unchanged rather than an
+ * invented one: there is nothing to frame, and snapping someone to the origin
+ * when they pressed a button expecting to see their work is worse than doing
+ * nothing.
+ */
+export function fitTo(
+  bounds: Bounds,
+  size: { readonly width: number; readonly height: number },
+  current: Viewport,
+): Viewport {
+  const contentWidth = bounds.maxX - bounds.minX;
+  const contentHeight = bounds.maxY - bounds.minY;
+  if (contentWidth <= 0 || contentHeight <= 0) return current;
+  if (size.width <= 0 || size.height <= 0) return current;
+
+  /* At least one pixel of room, so a viewport smaller than the padding cannot
+     produce a negative scale. */
+  const availableWidth = Math.max(1, size.width - FIT_PADDING * 2);
+  const availableHeight = Math.max(1, size.height - FIT_PADDING * 2);
+
+  const zoom = clampZoom(
+    Math.min(1, availableWidth / contentWidth, availableHeight / contentHeight),
+  );
+
+  /* Centre the content: the world point at the middle of the bounds should land
+     at the middle of the screen. Rearranged from `screen = (world - pan) * zoom`
+     with screen fixed at size/2. */
+  const centreX = (bounds.minX + bounds.maxX) / 2;
+  const centreY = (bounds.minY + bounds.maxY) / 2;
+
+  return {
+    zoom,
+    pan: {
+      x: centreX - size.width / (2 * zoom),
+      y: centreY - size.height / (2 * zoom),
+    },
+  };
+}
+
+/** The rectangle containing every box given, or null if there are none. */
+export function boundsOf(
+  boxes: readonly { x: number; y: number; width: number; height: number }[],
+): Bounds | null {
+  if (boxes.length === 0) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const box of boxes) {
+    minX = Math.min(minX, box.x);
+    minY = Math.min(minY, box.y);
+    maxX = Math.max(maxX, box.x + box.width);
+    maxY = Math.max(maxY, box.y + box.height);
+  }
+
+  return { minX, minY, maxX, maxY };
+}

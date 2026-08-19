@@ -3,6 +3,8 @@ import type { NodeId } from "../core/ids";
 import {
   IDENTITY,
   type Viewport,
+  boundsOf,
+  fitTo,
   panByScreenDelta,
   screenToWorld,
   zoomAtScreenPoint,
@@ -58,6 +60,8 @@ type Gesture =
 export interface CanvasHandle {
   /** The world point at the middle of what is currently on screen. */
   centre: () => { x: number; y: number };
+  /** Frame everything on the canvas. Does nothing if there is nothing. */
+  fit: () => void;
 }
 
 export const Canvas = forwardRef<CanvasHandle, {
@@ -75,6 +79,11 @@ export const Canvas = forwardRef<CanvasHandle, {
      at. */
   const viewRef = useRef<Viewport>(view);
   viewRef.current = view;
+
+  /* The document, readable from the imperative handle without making the
+     handle's identity change on every edit. */
+  const docRef = useRef(doc);
+  docRef.current = doc;
   const [selected, setSelected] = useState<NodeId | null>(null);
   const gesture = useRef<Gesture>({ kind: "idle" });
 
@@ -179,6 +188,39 @@ export const Canvas = forwardRef<CanvasHandle, {
         if (element === null) return screenToWorld({ x: 0, y: 0 }, viewRef.current);
         const { width, height } = element.getBoundingClientRect();
         return screenToWorld({ x: width / 2, y: height / 2 }, viewRef.current);
+      },
+
+      fit: () => {
+        const element = surface.current;
+        if (element === null) return;
+
+        /* MEASURED, NOT COMPUTED, and it has to be. A text node's height is
+           intrinsic — `core` deliberately never knows it — so the bounding box
+           can only come from what was actually laid out.
+
+           `offsetWidth/offsetHeight` are LAYOUT values, untouched by the
+           ancestor's `scale()`, so they are already in world units at any
+           zoom. Reading `getBoundingClientRect()` here would return screen
+           pixels and make the fit wrong everywhere except 100%. */
+        const boxes = [...element.querySelectorAll<HTMLElement>("[data-node-id]")]
+          .map((node) => {
+            const placement = docRef.current.nodes[node.dataset.nodeId as NodeId]
+              ?.presentations.desktop;
+            if (placement === undefined) return null;
+            return {
+              x: placement.x,
+              y: placement.y,
+              width: node.offsetWidth,
+              height: node.offsetHeight,
+            };
+          })
+          .filter((box): box is NonNullable<typeof box> => box !== null);
+
+        const bounds = boundsOf(boxes);
+        if (bounds === null) return;
+
+        const { width, height } = element.getBoundingClientRect();
+        setView((current) => fitTo(bounds, { width, height }, current));
       },
     }),
     [],

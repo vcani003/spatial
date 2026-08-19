@@ -26,8 +26,19 @@ import { useEffect } from "react";
  */
 
 export interface Hotkey {
-  /** Lower-case `event.key`, e.g. "m", "b". */
+  /**
+   * Lower-case `event.key`, e.g. "m", "b" — or a `KeyboardEvent.code` such as
+   * "Digit1" when `byCode` is set.
+   *
+   * WHY `code` IS SOMETIMES NEEDED: shift changes what `key` reports. Shift+1
+   * arrives as "!" on a US layout and as something else again elsewhere, so a
+   * chord like Figma's zoom-to-fit cannot be matched by `key` without being
+   * wrong on somebody's keyboard. `code` is the physical key and does not
+   * move.
+   */
   readonly key: string;
+  /** Match `event.code` instead of `event.key`. */
+  readonly byCode?: boolean;
   /** ⌘ on macOS, Ctrl elsewhere. */
   readonly mod?: boolean;
   readonly shift?: boolean;
@@ -52,7 +63,8 @@ export function useHotkey(hotkey: Hotkey, run: () => void): void {
       const mod = isMac() ? event.metaKey : event.ctrlKey;
       const wrongMod = isMac() ? event.ctrlKey : event.metaKey;
 
-      if (event.key.toLowerCase() !== hotkey.key) return;
+      const pressed = hotkey.byCode === true ? event.code : event.key.toLowerCase();
+      if (pressed !== hotkey.key) return;
       if (mod !== (hotkey.mod ?? false)) return;
       if (wrongMod) return;
       if (event.shiftKey !== (hotkey.shift ?? false)) return;
@@ -68,7 +80,7 @@ export function useHotkey(hotkey: Hotkey, run: () => void): void {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [hotkey.key, hotkey.mod, hotkey.shift, run]);
+  }, [hotkey.key, hotkey.byCode, hotkey.mod, hotkey.shift, run]);
 }
 
 /** Rendered into the UI so a shortcut is discoverable rather than folklore. */

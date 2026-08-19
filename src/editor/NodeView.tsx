@@ -29,6 +29,9 @@ export function NodeView({
   return (
     <div
       className={styles.node}
+      /* Measurable by id. A text node's height is intrinsic, so the only place
+         that knows how tall it actually came out is the DOM. */
+      data-node-id={node.id}
       data-selected={selected ? "" : undefined}
       /* An absent height is intrinsic, so it must not reach the DOM as
          `height: undefined` — it simply is not set, and the box takes the

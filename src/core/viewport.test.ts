@@ -4,7 +4,9 @@ import {
   MAX_ZOOM,
   MIN_ZOOM,
   type Viewport,
+  boundsOf,
   clampZoom,
+  fitTo,
   panByScreenDelta,
   screenToWorld,
   worldToScreen,
@@ -128,5 +130,71 @@ describe("zoomAtScreenPoint", () => {
     expect(clampZoom(1000)).toBe(MAX_ZOOM);
     expect(clampZoom(0)).toBe(MIN_ZOOM);
     expect(clampZoom(1)).toBe(1);
+  });
+});
+
+describe("boundsOf", () => {
+  it("is null when there is nothing", () => {
+    expect(boundsOf([])).toBeNull();
+  });
+
+  it("wraps every box, including ones at negative coordinates", () => {
+    /* The canvas is infinite in all directions — content left of and above the
+       origin is ordinary, not an edge case. */
+    expect(
+      boundsOf([
+        { x: -100, y: -50, width: 40, height: 20 },
+        { x: 200, y: 300, width: 100, height: 50 },
+      ]),
+    ).toEqual({ minX: -100, minY: -50, maxX: 300, maxY: 350 });
+  });
+});
+
+describe("fitTo", () => {
+  const size = { width: 1000, height: 600 };
+  const box = { minX: 0, minY: 0, maxX: 500, maxY: 300 };
+
+  it("centres the content in the viewport", () => {
+    const view = fitTo(box, size, IDENTITY);
+    const centre = screenToWorld({ x: size.width / 2, y: size.height / 2 }, view);
+    expect(centre.x).toBeCloseTo(250, 6);
+    expect(centre.y).toBeCloseTo(150, 6);
+  });
+
+  it("fits content larger than the viewport, with padding to spare", () => {
+    const huge = { minX: 0, minY: 0, maxX: 5000, maxY: 4000 };
+    const view = fitTo(huge, size, IDENTITY);
+
+    const topLeft = worldToScreen({ x: huge.minX, y: huge.minY }, view);
+    const bottomRight = worldToScreen({ x: huge.maxX, y: huge.maxY }, view);
+
+    expect(topLeft.x).toBeGreaterThanOrEqual(0);
+    expect(topLeft.y).toBeGreaterThanOrEqual(0);
+    expect(bottomRight.x).toBeLessThanOrEqual(size.width);
+    expect(bottomRight.y).toBeLessThanOrEqual(size.height);
+  });
+
+  it("never magnifies past 1:1", () => {
+    /* "Fit" means see everything, not fill the screen with one word. */
+    const tiny = { minX: 0, minY: 0, maxX: 20, maxY: 10 };
+    expect(fitTo(tiny, size, IDENTITY).zoom).toBe(1);
+  });
+
+  it("returns the viewport untouched when there is nothing to frame", () => {
+    /* Snapping someone to the origin when they pressed a button expecting to
+       see their work is worse than doing nothing. */
+    const flat = { minX: 10, minY: 10, maxX: 10, maxY: 10 };
+    expect(fitTo(flat, size, AWKWARD)).toBe(AWKWARD);
+    expect(fitTo(box, { width: 0, height: 0 }, AWKWARD)).toBe(AWKWARD);
+  });
+
+  it("frames content that sits far from the origin", () => {
+    /* The case the button exists for: you panned away and cannot find
+       anything. */
+    const faraway = { minX: -9000, minY: 6000, maxX: -8600, maxY: 6200 };
+    const view = fitTo(faraway, size, IDENTITY);
+    const centre = screenToWorld({ x: size.width / 2, y: size.height / 2 }, view);
+    expect(centre.x).toBeCloseTo(-8800, 6);
+    expect(centre.y).toBeCloseTo(6100, 6);
   });
 });

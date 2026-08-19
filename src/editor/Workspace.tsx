@@ -47,6 +47,10 @@ const TOGGLE_CREATE = { key: "b", mod: true } as const;
 const UNDO = { key: "z", mod: true } as const;
 const REDO = { key: "z", mod: true, shift: true } as const;
 
+/* Shift+1 — Figma's zoom-to-fit, matched by physical key because shift turns
+   "1" into "!" on a US layout and something else elsewhere. */
+const FIT = { key: "Digit1", byCode: true, shift: true } as const;
+
 export function Workspace({
   doc,
   onChange,
@@ -76,10 +80,18 @@ export function Workspace({
     setCreateOpen((open) => !open);
   }, []);
 
+  /* An infinite canvas is very easy to get lost on: pan far enough and there is
+     nothing on screen and no edge to tell you which way back. This is the way
+     back. */
+  const fit = useCallback(() => {
+    canvas.current?.fit();
+  }, []);
+
   useHotkey(TOGGLE_MOBILE, toggleMobile);
   useHotkey(TOGGLE_CREATE, toggleCreate);
   useHotkey(UNDO, undo);
   useHotkey(REDO, redo);
+  useHotkey(FIT, fit);
 
   /* New nodes are built by `core` around a centre point, and the only thing
      that knows where "the middle of what you are looking at" is, is the canvas.
@@ -126,6 +138,13 @@ export function Workspace({
         >
           Redo
           <span className={styles.chord} aria-hidden="true">{`${modLabel()}⇧Z`}</span>
+        </button>
+
+        <span className={styles.divider} aria-hidden="true" />
+
+        <button type="button" className={styles.action} onClick={fit}>
+          Fit
+          <span className={styles.chord} aria-hidden="true">⇧1</span>
         </button>
 
         <span className={styles.divider} aria-hidden="true" />
