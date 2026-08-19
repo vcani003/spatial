@@ -37,7 +37,7 @@ import { Workspace } from "./Workspace";
 afterEach(cleanup);
 
 const mount = () =>
-  render(<Workspace doc={makeFixture()} onChange={() => undefined} saveState="saved" />);
+  render(<Workspace doc={makeFixture()} onChange={() => undefined} saveState="saved" undo={() => undefined} redo={() => undefined} canUndo={false} canRedo={false} />);
 
 describe("the toolbar", () => {
   it("offers both panels, and both start closed", () => {

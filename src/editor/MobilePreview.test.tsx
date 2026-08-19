@@ -45,7 +45,7 @@ function mount() {
   const doc = makeFixture();
   return {
     doc,
-    ...render(<Workspace doc={doc} onChange={noop} saveState="saved" />),
+    ...render(<Workspace doc={doc} onChange={noop} saveState="saved" undo={() => undefined} redo={() => undefined} canUndo={false} canRedo={false} />),
   };
 }
 

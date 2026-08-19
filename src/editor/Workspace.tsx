@@ -41,14 +41,28 @@ import styles from "./Workspace.module.css";
 const TOGGLE_MOBILE = { key: "m", mod: true, shift: true } as const;
 const TOGGLE_CREATE = { key: "b", mod: true } as const;
 
+/* ⌘Z and ⌘⇧Z — the platform's own bindings, and `useHotkey` already refuses to
+   fire while a text field has focus, so undo inside an input still means undo
+   the TEXT rather than the canvas. */
+const UNDO = { key: "z", mod: true } as const;
+const REDO = { key: "z", mod: true, shift: true } as const;
+
 export function Workspace({
   doc,
   onChange,
   saveState,
+  undo,
+  redo,
+  canUndo,
+  canRedo,
 }: {
   doc: SpatialDocument;
-  onChange: (next: SpatialDocument) => void;
+  onChange: (next: SpatialDocument, key?: string) => void;
   saveState: SaveState;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -64,6 +78,8 @@ export function Workspace({
 
   useHotkey(TOGGLE_MOBILE, toggleMobile);
   useHotkey(TOGGLE_CREATE, toggleCreate);
+  useHotkey(UNDO, undo);
+  useHotkey(REDO, redo);
 
   /* New nodes are built by `core` around a centre point, and the only thing
      that knows where "the middle of what you are looking at" is, is the canvas.
@@ -93,6 +109,27 @@ export function Workspace({
   return (
     <div className={styles.workspace}>
       <header className={styles.toolbar}>
+        <button
+          type="button"
+          className={styles.action}
+          disabled={!canUndo}
+          onClick={undo}
+        >
+          Undo
+          <span className={styles.chord} aria-hidden="true">{`${modLabel()}Z`}</span>
+        </button>
+        <button
+          type="button"
+          className={styles.action}
+          disabled={!canRedo}
+          onClick={redo}
+        >
+          Redo
+          <span className={styles.chord} aria-hidden="true">{`${modLabel()}⇧Z`}</span>
+        </button>
+
+        <span className={styles.divider} aria-hidden="true" />
+
         <ToolbarToggle
           label="Add"
           chord={`${modLabel()}B`}

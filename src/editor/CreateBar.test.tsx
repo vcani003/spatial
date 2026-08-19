@@ -19,9 +19,9 @@ function mount() {
   let doc: SpatialDocument = initial;
   const onChange = vi.fn((next: SpatialDocument) => {
     doc = next;
-    view.rerender(<Workspace doc={doc} onChange={onChange} saveState="saved" />);
+    view.rerender(<Workspace doc={doc} onChange={onChange} saveState="saved" undo={() => undefined} redo={() => undefined} canUndo={false} canRedo={false} />);
   });
-  const view = render(<Workspace doc={initial} onChange={onChange} saveState="saved" />);
+  const view = render(<Workspace doc={initial} onChange={onChange} saveState="saved" undo={() => undefined} redo={() => undefined} canUndo={false} canRedo={false} />);
 
   return { initial, onChange, current: () => doc };
 }

@@ -44,7 +44,7 @@ type Gesture =
   /** Dragging the background: the world moves under the pointer. */
   | { readonly kind: "pan" }
   /** Dragging a node: only that node's geometry changes. */
-  | { readonly kind: "move"; readonly id: NodeId };
+  | { readonly kind: "move"; readonly id: NodeId; readonly key: string };
 
 /**
  * What the shell above can ask the canvas for.
@@ -62,7 +62,9 @@ export interface CanvasHandle {
 
 export const Canvas = forwardRef<CanvasHandle, {
   doc: SpatialDocument;
-  onChange: (next: SpatialDocument) => void;
+  /** `key` labels a gesture — see `core/history.ts`. Frames sharing one
+   *  collapse into a single undo step. */
+  onChange: (next: SpatialDocument, key?: string) => void;
   saveState: SaveState;
 }>(function Canvas({ doc, onChange, saveState }, handle) {
   const [view, setView] = useState<Viewport>(IDENTITY);
@@ -75,6 +77,14 @@ export const Canvas = forwardRef<CanvasHandle, {
   viewRef.current = view;
   const [selected, setSelected] = useState<NodeId | null>(null);
   const gesture = useRef<Gesture>({ kind: "idle" });
+
+  /* A GESTURE'S IDENTITY IS THE POINTER INTERACTION, NOT THE NODE, and this
+     counter is what says so. Keying history on `move:<nodeId>` seemed right and
+     is wrong in both directions: two separate drags of the SAME node share a
+     key and collapse into one undo step, while the raise-to-front that starts a
+     drag has no key at all and becomes a second step. One press, one number,
+     one undoable step. */
+  const gestureSeq = useRef(0);
   const surface = useRef<HTMLDivElement>(null);
 
   /* Pointer position is read from movementX/Y rather than tracked by hand.
@@ -101,7 +111,12 @@ export const Canvas = forwardRef<CanvasHandle, {
          Divide by zoom: a node must stay under the pointer at every zoom
          level. Same arithmetic `panByScreenDelta` does, same bug if forgotten. */
       const { zoom } = viewRef.current;
-      onChange(moveNodeBy(doc, active.id, event.movementX / zoom, event.movementY / zoom));
+      /* Keyed by the gesture, so every frame of one drag is a single undo
+         step — and the next drag gets a new key and its own step. */
+      onChange(
+        moveNodeBy(doc, active.id, event.movementX / zoom, event.movementY / zoom),
+        active.key,
+      );
     },
     [doc, onChange],
   );
@@ -127,9 +142,15 @@ export const Canvas = forwardRef<CanvasHandle, {
       /* The background handler would otherwise start a pan underneath this. */
       event.stopPropagation();
       surface.current?.setPointerCapture(event.pointerId);
-      gesture.current = { kind: "move", id };
+      gestureSeq.current += 1;
+      const key = `move:${id}:${String(gestureSeq.current)}`;
+      gesture.current = { kind: "move", id, key };
       setSelected(id);
-      onChange(bringToFront(doc, id));
+      /* THE RAISE CARRIES THE GESTURE'S KEY TOO. Pressing a node and dragging
+         it is one action from the visitor's side; recording the raise
+         separately would make every drag take two presses of undo, the first
+         of which appears to do nothing. */
+      onChange(bringToFront(doc, id), key);
     },
     [doc, onChange],
   );

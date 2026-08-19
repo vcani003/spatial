@@ -84,3 +84,38 @@
 .stage[data-mobile-open] {
   grid-template-columns: minmax(0, 1fr) auto;
 }
+
+/* Undo and redo. Same register as the panel toggles, but they act rather than
+   reveal, so they never take the lit `data-open` state. */
+.action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: #b9b9c6;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.action:hover:not(:disabled) {
+  background-color: #16161c;
+  color: #e8e8ef;
+}
+
+/* Disabled rather than hidden: a control that vanishes when there is nothing
+   to undo teaches nobody that undo exists. */
+.action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.divider {
+  inline-size: 1px;
+  block-size: 18px;
+  margin-inline: 4px;
+  background-color: #24242c;
+}

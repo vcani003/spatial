@@ -23,11 +23,21 @@ export function App() {
     [],
   );
 
-  const { document, saveState, change } = useDocument(repository);
+  const { document, saveState, change, undo, redo, canUndo, canRedo } = useDocument(repository);
 
   /* Nothing is rendered until there is a document. It is one IndexedDB read,
      so this is a frame or two — a spinner would flash and say nothing. */
   if (document === null) return null;
 
-  return <Workspace doc={document} onChange={change} saveState={saveState} />;
+  return (
+    <Workspace
+      doc={document}
+      onChange={change}
+      saveState={saveState}
+      undo={undo}
+      redo={redo}
+      canUndo={canUndo}
+      canRedo={canRedo}
+    />
+  );
 }
