@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeFixture } from "../core/fixture";
 import { type History, commit, initHistory, undo } from "../core/history";
@@ -266,6 +266,60 @@ describe("deleting", () => {
     const before = app.doc().paintOrder.length;
     fireEvent.keyDown(editor, { key: "Backspace" });
     expect(app.doc().paintOrder).toHaveLength(before);
+  });
+});
+
+describe("the delete control", () => {
+  const deleteButton = (): HTMLButtonElement =>
+    screen.getByRole("button", { name: /delete/i }) as HTMLButtonElement;
+
+  it("is visible but disabled with nothing selected", () => {
+    /* Visible rather than hidden, so the toolbar teaches that selecting
+       something enables it. It was a keyboard shortcut alone, which meant the
+       feature existed and nothing on screen said so — the reasonable
+       conclusion from looking at the toolbar was that you could not delete. */
+    mount();
+    expect(deleteButton().disabled).toBe(true);
+  });
+
+  it("enables once something is selected", () => {
+    const app = mount();
+    press(app.box("Spatial"));
+    expect(deleteButton().disabled).toBe(false);
+  });
+
+  it("says how many when it is more than one", () => {
+    const app = mount();
+    press(app.box("Spatial"));
+    release(app.surface);
+    press(app.box("An infinite"), { shiftKey: true });
+    release(app.surface);
+
+    expect(deleteButton().textContent).toContain("2");
+  });
+
+  it("deletes the same things the key would", () => {
+    const app = mount();
+    press(app.box("Spatial"));
+    release(app.surface);
+    press(app.box("An infinite"), { shiftKey: true });
+    release(app.surface);
+
+    fireEvent.click(deleteButton());
+    expect(app.doc().paintOrder).toHaveLength(app.initial.paintOrder.length - 2);
+    expect(deleteButton().disabled).toBe(true);
+  });
+
+  it("is one undo, like the key", () => {
+    const app = mount();
+    press(app.box("Spatial"));
+    release(app.surface);
+    press(app.box("An infinite"), { shiftKey: true });
+    release(app.surface);
+
+    fireEvent.click(deleteButton());
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(app.doc().paintOrder).toHaveLength(app.initial.paintOrder.length);
   });
 });
 

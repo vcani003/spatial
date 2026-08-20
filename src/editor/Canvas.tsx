@@ -84,6 +84,8 @@ export interface CanvasHandle {
   worldAt: (client: { x: number; y: number }) => { x: number; y: number } | null;
   /** Open a node's text editor. Used when a dropped text node needs typing. */
   beginEdit: (id: NodeId) => void;
+  /** Remove the current selection, as one undoable change. */
+  deleteSelected: () => void;
 }
 
 export const Canvas = forwardRef<CanvasHandle, {
@@ -92,7 +94,9 @@ export const Canvas = forwardRef<CanvasHandle, {
    *  collapse into a single undo step. */
   onChange: (next: SpatialDocument, key?: string) => void;
   saveState: SaveState;
-}>(function Canvas({ doc, onChange, saveState }, handle) {
+  /** How many nodes are selected, so the shell can offer a way to delete. */
+  onSelectionChange?: (count: number) => void;
+}>(function Canvas({ doc, onChange, saveState, onSelectionChange }, handle) {
   const [view, setView] = useState<Viewport>(IDENTITY);
 
   /* The viewport, readable from an event handler without going through a state
@@ -125,6 +129,8 @@ export const Canvas = forwardRef<CanvasHandle, {
 
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+
+  const deleteSelectedRef = useRef<() => void>(() => undefined);
 
   /* Which node is being typed into, if any. Editor state, not document state —
      §15 puts transient selection on this side of the line and this is the same
@@ -404,6 +410,10 @@ export const Canvas = forwardRef<CanvasHandle, {
         onEditStartRef.current(id);
       },
 
+      deleteSelected: () => {
+        deleteSelectedRef.current();
+      },
+
       fit: () => {
         const element = surface.current;
         if (element === null) return;
@@ -440,6 +450,34 @@ export const Canvas = forwardRef<CanvasHandle, {
     [],
   );
 
+  /**
+   * Removes whatever is selected, as one undoable change.
+   *
+   * Extracted so the keyboard and the toolbar cannot drift: a button that
+   * deletes slightly differently from the key is two behaviours pretending to
+   * be one.
+   */
+  const deleteSelected = useCallback(() => {
+    const ids = [...selectedRef.current];
+    if (ids.length === 0) return;
+
+    gestureSeq.current += 1;
+    onChangeRef.current(
+      removeNodes(docRef.current, ids),
+      `delete:${String(gestureSeq.current)}`,
+    );
+    setSelected(new Set());
+  }, []);
+
+  /* Tells the shell how many things are selected, so it can offer a visible
+     way to delete them. WITHOUT THIS THERE WAS NO DELETE *OPTION* — only a
+     key, which meant the feature existed and nothing on screen said so. */
+  useEffect(() => {
+    onSelectionChange?.(selected.size);
+  }, [selected, onSelectionChange]);
+
+  deleteSelectedRef.current = deleteSelected;
+
   /* DELETE AND ESCAPE.
      On the window rather than the surface: the canvas is not focusable, so a
      key pressed after clicking a node would otherwise reach nothing. It
@@ -462,17 +500,11 @@ export const Canvas = forwardRef<CanvasHandle, {
       }
 
       if (event.key !== "Delete" && event.key !== "Backspace") return;
-      const ids = [...selectedRef.current];
-      if (ids.length === 0) return;
+      if (selectedRef.current.size === 0) return;
 
       /* Backspace still scrolls back a page in some setups. */
       event.preventDefault();
-      gestureSeq.current += 1;
-      onChangeRef.current(
-        removeNodes(docRef.current, ids),
-        `delete:${String(gestureSeq.current)}`,
-      );
-      setSelected(new Set());
+      deleteSelectedRef.current();
     };
 
     window.addEventListener("keydown", onKeyDown);

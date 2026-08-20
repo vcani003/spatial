@@ -70,6 +70,11 @@ export function Workspace({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+
+  /* How many nodes the canvas has selected. The shell keeps it only so the
+     toolbar can offer a visible way to delete them — selection itself belongs
+     to the canvas. */
+  const [selectedCount, setSelectedCount] = useState(0);
   const canvas = useRef<CanvasHandle>(null);
 
   const toggleMobile = useCallback(() => {
@@ -154,6 +159,23 @@ export function Workspace({
           <span className={styles.chord} aria-hidden="true">{`${modLabel()}⇧Z`}</span>
         </button>
 
+        {/* DELETE IS A BUTTON, not only a key. It was a key alone, which meant
+            the feature existed and nothing on screen said so — the reasonable
+            conclusion from looking at the toolbar was that you could not
+            delete anything. Disabled rather than hidden, so it is visible
+            before there is a selection and teaches that selecting enables it. */}
+        <button
+          type="button"
+          className={styles.action}
+          disabled={selectedCount === 0}
+          onClick={() => {
+            canvas.current?.deleteSelected();
+          }}
+        >
+          {selectedCount > 1 ? `Delete ${String(selectedCount)}` : "Delete"}
+          <span className={styles.chord} aria-hidden="true">⌫</span>
+        </button>
+
         <span className={styles.divider} aria-hidden="true" />
 
         <button type="button" className={styles.action} onClick={fit}>
@@ -182,7 +204,13 @@ export function Workspace({
       {createOpen && <Palette onDrop={onDrop} onPlaceAtCentre={onPlaceAtCentre} />}
 
       <div className={styles.stage} data-mobile-open={mobileOpen ? "" : undefined}>
-        <Canvas ref={canvas} doc={doc} onChange={onChange} saveState={saveState} />
+        <Canvas
+          ref={canvas}
+          doc={doc}
+          onChange={onChange}
+          saveState={saveState}
+          onSelectionChange={setSelectedCount}
+        />
         {/* Not rendered at all when closed. `hidden` would have left an empty
             column; this leaves nothing. */}
         {mobileOpen && <MobilePreview doc={doc} />}
