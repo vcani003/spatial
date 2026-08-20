@@ -3,7 +3,7 @@ import { addNode } from "../core/mutate";
 import type { SpatialDocument, SpatialNode } from "../core/schema";
 import type { SaveState } from "../useDocument";
 import { Canvas, type CanvasHandle } from "./Canvas";
-import { CreateBar } from "./CreateBar";
+import { Palette, type PaletteDrop } from "./Palette";
 import { MobilePreview } from "./MobilePreview";
 import { useHotkey, modLabel } from "./useHotkey";
 import styles from "./Workspace.module.css";
@@ -93,29 +93,43 @@ export function Workspace({
   useHotkey(REDO, redo);
   useHotkey(FIT, fit);
 
-  /* New nodes are built by `core` around a centre point, and the only thing
-     that knows where "the middle of what you are looking at" is, is the canvas.
-     So the node arrives here positioned at the origin and is re-centred before
-     it is added — the alternative is threading the viewport up through the
-     shell and back down, to answer a question the canvas already knows. */
-  const create = useCallback(
-    (node: SpatialNode) => {
-      const centre = canvas.current?.centre() ?? { x: 0, y: 0 };
-      const { desktop } = node.presentations;
-      onChange(
-        addNode(doc, {
-          ...node,
-          presentations: {
-            desktop: {
-              ...desktop,
-              x: centre.x - desktop.width / 2,
-              y: centre.y - (desktop.height ?? 0) / 2,
-            },
-          },
-        }),
-      );
+  /* Everything a palette drop needs: a place, and a node built around it.
+     `core` builds nodes around a centre; only the canvas knows where a screen
+     point lands in the world, and only it can open an editor. */
+  const add = useCallback(
+    (
+      make: (centre: { x: number; y: number }) => SpatialNode,
+      centre: { x: number; y: number },
+      thenEdit: boolean,
+    ) => {
+      const node = make(centre);
+      onChange(addNode(doc, node));
+      /* After the commit, so the node exists by the time the editor opens for
+         it. An empty text node that is never typed into removes itself when
+         the editor closes — see `onEditDone` — which is what makes dropping
+         one and changing your mind cost nothing. */
+      if (thenEdit) canvas.current?.beginEdit(node.id);
     },
     [doc, onChange],
+  );
+
+  const onDrop = useCallback(
+    (drop: PaletteDrop) => {
+      const centre = canvas.current?.worldAt(drop.client);
+      /* Dropped outside the canvas — on the toolbar, the preview, or off the
+         window. Creating nothing is the honest answer; placing it somewhere
+         the person did not point is worse than not placing it. */
+      if (centre === undefined || centre === null) return;
+      add(drop.make, centre, drop.thenEdit);
+    },
+    [add],
+  );
+
+  const onPlaceAtCentre = useCallback(
+    (drop: Omit<PaletteDrop, "client">) => {
+      add(drop.make, canvas.current?.centre() ?? { x: 0, y: 0 }, drop.thenEdit);
+    },
+    [add],
   );
 
   return (
@@ -165,7 +179,7 @@ export function Workspace({
         />
       </header>
 
-      {createOpen && <CreateBar onCreate={create} />}
+      {createOpen && <Palette onDrop={onDrop} onPlaceAtCentre={onPlaceAtCentre} />}
 
       <div className={styles.stage} data-mobile-open={mobileOpen ? "" : undefined}>
         <Canvas ref={canvas} doc={doc} onChange={onChange} saveState={saveState} />

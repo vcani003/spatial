@@ -1,0 +1,121 @@
+/* A row of things you can pick up. Plain, like the rest of the tool chrome. */
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-block-end: 1px solid #1e1e26;
+  background-color: #0b0b0e;
+}
+
+.tile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid #24242c;
+  border-radius: 4px;
+  background-color: #16161c;
+  color: #b9b9c6;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+
+  /* The affordance. `grab` says pick me up; the canvas says the same thing
+     with the same cursor, which is the point. */
+  cursor: grab;
+  /* Without this the browser starts its own text selection or panning gesture
+     the moment the pointer moves. */
+  touch-action: none;
+  user-select: none;
+}
+
+.tile:hover:not(:disabled) {
+  color: #e8e8ef;
+  border-color: #34343f;
+}
+
+.tile:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Dimmed while its ghost is out — the tile is somewhere else at the moment. */
+.tile[data-dragging] {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.glyph {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  color: #6a6a78;
+}
+
+.imageTool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.url {
+  inline-size: 15rem;
+  padding: 5px 8px;
+  border: 1px solid #24242c;
+  border-radius: 4px;
+  background-color: #0e0e11;
+  color: #e8e8ef;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.url:focus-visible {
+  outline: 1px solid #6e8cff;
+  outline-offset: 1px;
+}
+
+.url[aria-invalid] {
+  border-color: #7a5a5a;
+}
+
+.problem {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  color: #d8b4b4;
+}
+
+.hint {
+  margin: 0;
+  margin-inline-start: auto;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 11px;
+  color: #5a5a68;
+}
+
+/* The thing under the cursor while dragging. Positioned at the viewport's
+   origin and moved by transform, so the only per-frame work is a compositor
+   translate. */
+.ghost {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 10;
+
+  display: grid;
+  place-items: center;
+  inline-size: 44px;
+  block-size: 44px;
+  margin-block-start: -22px;
+  margin-inline-start: -22px;
+
+  border: 1px solid #6e8cff;
+  border-radius: 4px;
+  background-color: #16161c;
+  color: #e8e8ef;
+  font-family: ui-monospace, monospace;
+  font-size: 15px;
+
+  pointer-events: none;
+}

@@ -62,6 +62,14 @@ export interface CanvasHandle {
   centre: () => { x: number; y: number };
   /** Frame everything on the canvas. Does nothing if there is nothing. */
   fit: () => void;
+  /**
+   * The world point under a VIEWPORT coordinate — `clientX`/`clientY` from a
+   * pointer event. `null` when that point is outside the canvas, which is how
+   * a drop lands on the toolbar and correctly creates nothing.
+   */
+  worldAt: (client: { x: number; y: number }) => { x: number; y: number } | null;
+  /** Open a node's text editor. Used when a dropped text node needs typing. */
+  beginEdit: (id: NodeId) => void;
 }
 
 export const Canvas = forwardRef<CanvasHandle, {
@@ -154,6 +162,30 @@ export const Canvas = forwardRef<CanvasHandle, {
     [editing, onChange],
   );
 
+  /* `beginEdit` is called from the imperative handle, whose identity must not
+     change on every edit — so it reads the current callback from a ref rather
+     than closing over it. */
+  const onEditStartRef = useRef(onEditStart);
+  onEditStartRef.current = onEditStart;
+
+  /* Read through a ref for the same reason: `onPointerDown` is memoised with
+     no dependencies so a drag never re-binds mid-gesture, and it still needs
+     the current exit path. */
+  const onEditDoneRef = useRef<() => void>(() => undefined);
+
+  /**
+   * THE ONE WAY OUT OF EDITING, and it has to be the only one.
+   *
+   * This used to be reachable solely from the editor's `blur`. Pressing the
+   * canvas background called `setEditing(null)` directly instead — which
+   * closed the editor and skipped the cleanup below, so a text node dropped
+   * and then abandoned stayed in the document as an empty box: unselectable,
+   * invisible, and exactly the state §19 says must never accumulate.
+   *
+   * Blur is also not guaranteed to arrive. A dropped node's editor can end up
+   * open with focus already elsewhere, and then no blur is ever fired. Any
+   * path that ends an edit calls this.
+   */
   const onEditDone = useCallback(() => {
     const id = editing;
     setEditing(null);
@@ -173,6 +205,8 @@ export const Canvas = forwardRef<CanvasHandle, {
     }
   }, [editing, onChange]);
 
+  onEditDoneRef.current = onEditDone;
+
   const onPointerDown = useCallback((event: React.PointerEvent) => {
     /* Capture on the surface so a fast drag that outruns the cursor keeps
        delivering moves instead of dropping the gesture on the first frame
@@ -180,9 +214,9 @@ export const Canvas = forwardRef<CanvasHandle, {
     event.currentTarget.setPointerCapture(event.pointerId);
     gesture.current = { kind: "pan" };
     setSelected(null);
-    /* Blur reaches `onEditDone` on its own; this is only for the case where
-       the editor never had focus to lose. */
-    setEditing(null);
+    /* Ends any edit properly, including removing a node that was never typed
+       into. Clearing the state directly is what left empty nodes behind. */
+    onEditDoneRef.current();
   }, []);
 
   const endGesture = useCallback((event: React.PointerEvent) => {
@@ -234,6 +268,25 @@ export const Canvas = forwardRef<CanvasHandle, {
         if (element === null) return screenToWorld({ x: 0, y: 0 }, viewRef.current);
         const { width, height } = element.getBoundingClientRect();
         return screenToWorld({ x: width / 2, y: height / 2 }, viewRef.current);
+      },
+
+      worldAt: (client) => {
+        const element = surface.current;
+        if (element === null) return null;
+
+        const rect = element.getBoundingClientRect();
+        const x = client.x - rect.left;
+        const y = client.y - rect.top;
+        /* Outside the surface is a real answer, not an edge case: dropping on
+           the toolbar or the preview should create nothing rather than
+           silently placing a node off-screen. */
+        if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+
+        return screenToWorld({ x, y }, viewRef.current);
+      },
+
+      beginEdit: (id) => {
+        onEditStartRef.current(id);
       },
 
       fit: () => {
