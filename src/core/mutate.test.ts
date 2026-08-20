@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeFixture } from "./fixture";
 import { newNodeId, type NodeId } from "./ids";
-import { bringToFront, moveNodeBy } from "./mutate";
+import { bringToFront, moveNodeBy, removeNode, setNodeText } from "./mutate";
 
 /**
  * The mutation seam. Every change to a document goes through here, so these
@@ -119,5 +119,101 @@ describe("bringToFront", () => {
         doc.nodes[id]?.presentations.desktop,
       );
     }
+  });
+});
+
+describe("setNodeText", () => {
+  const textId = (doc: ReturnType<typeof makeFixture>): NodeId => {
+    const found = Object.values(doc.nodes).find((n) => n.type === "text");
+    if (found === undefined) throw new Error("fixture has no text node");
+    return found.id;
+  };
+
+  it("replaces the words", () => {
+    const doc = makeFixture();
+    const id = textId(doc);
+    const content = setNodeText(doc, id, "something else").nodes[id]?.content;
+    expect(content?.kind === "text" && content.text).toBe("something else");
+  });
+
+  it("leaves authored geometry alone", () => {
+    /* Editing words is not moving a box. The RENDERED box will change, because
+       a text node's height is intrinsic — but nothing authored about it may. */
+    const doc = makeFixture();
+    const id = textId(doc);
+    const before = doc.nodes[id]?.presentations.desktop;
+    expect(
+      setNodeText(doc, id, "much much longer text than there was before").nodes[id]
+        ?.presentations.desktop,
+    ).toEqual(before);
+  });
+
+  it("accepts empty text without objecting", () => {
+    /* Mid-edit everything is deleted before anything is typed. What an empty
+       node MEANS is the editor's decision, not this function's. */
+    const doc = makeFixture();
+    const id = textId(doc);
+    const content = setNodeText(doc, id, "").nodes[id]?.content;
+    expect(content?.kind === "text" && content.text).toBe("");
+  });
+
+  it("is a no-op for unchanged text, for an image, and for an unknown id", () => {
+    const doc = makeFixture();
+    const id = textId(doc);
+    const current = doc.nodes[id]?.content;
+    const same = current?.kind === "text" ? current.text : "";
+
+    expect(setNodeText(doc, id, same)).toBe(doc);
+    expect(setNodeText(doc, newNodeId(), "x")).toBe(doc);
+
+    const image = Object.values(doc.nodes).find((n) => n.type === "image");
+    if (image !== undefined) expect(setNodeText(doc, image.id, "x")).toBe(doc);
+  });
+
+  it("does not mutate the document, and stamps a revision", () => {
+    const doc = makeFixture();
+    const snapshot = structuredClone(doc);
+    const next = setNodeText(doc, textId(doc), "new words");
+    expect(doc).toEqual(snapshot);
+    expect(next.revisionId).not.toBe(doc.revisionId);
+  });
+});
+
+describe("removeNode", () => {
+  it("removes the node AND its paint order entry", () => {
+    /* Both halves. A node dropped from `nodes` but left in `paintOrder` is the
+       dangling reference §19 calls a trap. */
+    const doc = makeFixture();
+    const id = firstId(doc);
+    const next = removeNode(doc, id);
+
+    expect(next.nodes[id]).toBeUndefined();
+    expect(next.paintOrder).not.toContain(id);
+    expect(next.paintOrder).toHaveLength(doc.paintOrder.length - 1);
+  });
+
+  it("leaves every other node exactly as it was", () => {
+    const doc = makeFixture();
+    const id = firstId(doc);
+    const next = removeNode(doc, id);
+
+    for (const other of doc.paintOrder) {
+      if (other === id) continue;
+      expect(next.nodes[other]).toEqual(doc.nodes[other]);
+    }
+    expect(next.paintOrder).toEqual(doc.paintOrder.filter((o) => o !== id));
+  });
+
+  it("ignores an unknown id", () => {
+    const doc = makeFixture();
+    expect(removeNode(doc, newNodeId())).toBe(doc);
+  });
+
+  it("does not mutate the document, and stamps a revision", () => {
+    const doc = makeFixture();
+    const snapshot = structuredClone(doc);
+    const next = removeNode(doc, firstId(doc));
+    expect(doc).toEqual(snapshot);
+    expect(next.revisionId).not.toBe(doc.revisionId);
   });
 });

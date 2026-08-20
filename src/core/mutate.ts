@@ -79,6 +79,53 @@ export function moveNodeBy(
 }
 
 /**
+ * Replaces a text node's words.
+ *
+ * Only text: an image has no words to set, and quietly doing nothing for one
+ * would hide a caller's mistake. The node is returned unchanged rather than
+ * throwing, for the same reason `moveNodeBy` tolerates a stale id — a canvas
+ * that crashes on a mistargeted edit is worse than one that ignores it.
+ */
+export function setNodeText(
+  doc: SpatialDocument,
+  id: NodeId,
+  text: string,
+): SpatialDocument {
+  const node = doc.nodes[id];
+  if (node === undefined || node.content.kind !== "text") return doc;
+  if (node.content.text === text) return doc;
+
+  return {
+    ...doc,
+    revisionId: newRevisionId(),
+    nodes: { ...doc.nodes, [id]: { ...node, content: { kind: "text", text } } },
+  };
+}
+
+/**
+ * Removes a node, and every reference to it.
+ *
+ * BOTH HALVES, ALWAYS. §19 lists dangling references as a trap and §17.2 wants
+ * a diagnostic able to find them; the cheapest way to have neither problem is
+ * for deletion to leave nothing behind. A node dropped from `nodes` but left in
+ * `paintOrder` is exactly the invisible broken state that becomes impossible to
+ * diagnose later.
+ */
+export function removeNode(doc: SpatialDocument, id: NodeId): SpatialDocument {
+  if (doc.nodes[id] === undefined) return doc;
+
+  const nodes = { ...doc.nodes };
+  delete nodes[id];
+
+  return {
+    ...doc,
+    revisionId: newRevisionId(),
+    nodes,
+    paintOrder: doc.paintOrder.filter((other) => other !== id),
+  };
+}
+
+/**
  * Raises a node to the top of the paint order.
  *
  * PAINT ORDER ONLY. §21 locks "Z-order is not authoritative semantic/reading

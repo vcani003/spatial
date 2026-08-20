@@ -79,3 +79,22 @@
 .trouble {
   color: #e8e8ef;
 }
+
+/* Being typed into. A hairline box so the editable region has an edge — a
+   caret blinking in open space gives no sense of where the text will wrap.
+   `cursor: text` because the pointer no longer moves the node. */
+.node[data-editing] {
+  cursor: text;
+}
+
+.node[data-editing] .text {
+  outline: 1px solid #6e8cff;
+  outline-offset: 3px;
+  /* The words must not jump when editing starts, so nothing here may change
+     the box: no padding, no border, no font change. Only the outline, which is
+     drawn outside the layout. */
+}
+
+.node[data-editing] .text:focus {
+  outline: 1px solid #6e8cff;
+}

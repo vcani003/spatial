@@ -9,7 +9,7 @@ import {
   screenToWorld,
   zoomAtScreenPoint,
 } from "../core/viewport";
-import { bringToFront, moveNodeBy } from "../core/mutate";
+import { bringToFront, moveNodeBy, removeNode, setNodeText } from "../core/mutate";
 import { type SpatialDocument, nodesInPaintOrder } from "../core/schema";
 import type { SaveState } from "../useDocument";
 import { NodeView } from "./NodeView";
@@ -85,6 +85,15 @@ export const Canvas = forwardRef<CanvasHandle, {
   const docRef = useRef(doc);
   docRef.current = doc;
   const [selected, setSelected] = useState<NodeId | null>(null);
+
+  /* Which node is being typed into, if any. Editor state, not document state —
+     §15 puts transient selection on this side of the line and this is the same
+     kind of thing: undo must never reopen an editor. */
+  const [editing, setEditing] = useState<NodeId | null>(null);
+
+  /* One key for one editing session, so a hundred keystrokes are one undo step
+     — the same trick a drag uses, for the same reason. */
+  const editKey = useRef("");
   const gesture = useRef<Gesture>({ kind: "idle" });
 
   /* A GESTURE'S IDENTITY IS THE POINTER INTERACTION, NOT THE NODE, and this
@@ -130,6 +139,40 @@ export const Canvas = forwardRef<CanvasHandle, {
     [doc, onChange],
   );
 
+  const onEditStart = useCallback((id: NodeId) => {
+    gestureSeq.current += 1;
+    editKey.current = `text:${id}:${String(gestureSeq.current)}`;
+    setEditing(id);
+  }, []);
+
+  const onEditText = useCallback(
+    (text: string) => {
+      const id = editing;
+      if (id === null) return;
+      onChange(setNodeText(docRef.current, id, text), editKey.current);
+    },
+    [editing, onChange],
+  );
+
+  const onEditDone = useCallback(() => {
+    const id = editing;
+    setEditing(null);
+    if (id === null) return;
+
+    /* AN EMPTY TEXT NODE IS REMOVED, and that is not tidiness. It renders as
+       nothing, so it cannot be seen, selected or double-clicked — invisible
+       state that only a diagnostic could ever find again, which is precisely
+       what §19 says must not be able to accumulate. Deleting everything and
+       clicking away is how a person says "never mind"; the node going with it
+       is what they meant, and undo brings it back in one step because the
+       removal shares the edit's key. */
+    const node = docRef.current.nodes[id];
+    if (node?.content.kind === "text" && node.content.text.trim() === "") {
+      onChange(removeNode(docRef.current, id), editKey.current);
+      setSelected((current) => (current === id ? null : current));
+    }
+  }, [editing, onChange]);
+
   const onPointerDown = useCallback((event: React.PointerEvent) => {
     /* Capture on the surface so a fast drag that outruns the cursor keeps
        delivering moves instead of dropping the gesture on the first frame
@@ -137,6 +180,9 @@ export const Canvas = forwardRef<CanvasHandle, {
     event.currentTarget.setPointerCapture(event.pointerId);
     gesture.current = { kind: "pan" };
     setSelected(null);
+    /* Blur reaches `onEditDone` on its own; this is only for the case where
+       the editor never had focus to lose. */
+    setEditing(null);
   }, []);
 
   const endGesture = useCallback((event: React.PointerEvent) => {
@@ -255,7 +301,11 @@ export const Canvas = forwardRef<CanvasHandle, {
             key={node.id}
             node={node}
             selected={node.id === selected}
+            editing={node.id === editing}
             onPointerDown={onNodePointerDown}
+            onEditStart={onEditStart}
+            onEditText={onEditText}
+            onEditDone={onEditDone}
           />
         ))}
       </div>
