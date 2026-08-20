@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeFixture } from "./fixture";
 import { newNodeId, type NodeId } from "./ids";
-import { bringToFront, moveNodeBy, removeNode, setNodeText } from "./mutate";
+import { bringToFront, moveNodeBy, moveNodesBy, removeNode, removeNodes, setNodeText } from "./mutate";
 
 /**
  * The mutation seam. Every change to a document goes through here, so these
@@ -215,5 +215,82 @@ describe("removeNode", () => {
     const next = removeNode(doc, firstId(doc));
     expect(doc).toEqual(snapshot);
     expect(next.revisionId).not.toBe(doc.revisionId);
+  });
+});
+
+describe("removeNodes", () => {
+  it("removes several as one change", () => {
+    /* Deleting a selection of three is ONE action from the person's side, so
+       it stamps one revision — otherwise, with history watching, it would
+       take three presses of undo to put them back. */
+    const doc = makeFixture();
+    const [a, b] = doc.paintOrder;
+    if (a === undefined || b === undefined) throw new Error("fixture too small");
+
+    const next = removeNodes(doc, [a, b]);
+    expect(next.nodes[a]).toBeUndefined();
+    expect(next.nodes[b]).toBeUndefined();
+    expect(next.paintOrder).toHaveLength(doc.paintOrder.length - 2);
+    expect(next.revisionId).not.toBe(doc.revisionId);
+  });
+
+  it("ignores ids that are not there, and does nothing for none", () => {
+    const doc = makeFixture();
+    const real = doc.paintOrder[0];
+    if (real === undefined) throw new Error("empty fixture");
+
+    expect(removeNodes(doc, [])).toBe(doc);
+    expect(removeNodes(doc, [newNodeId()])).toBe(doc);
+    expect(removeNodes(doc, [real, newNodeId()]).paintOrder).toHaveLength(
+      doc.paintOrder.length - 1,
+    );
+  });
+
+  it("leaves the survivors in their existing order", () => {
+    const doc = makeFixture();
+    const gone = doc.paintOrder[1];
+    if (gone === undefined) throw new Error("fixture too small");
+
+    expect(removeNodes(doc, [gone]).paintOrder).toEqual(
+      doc.paintOrder.filter((id) => id !== gone),
+    );
+  });
+});
+
+describe("moveNodesBy", () => {
+  it("moves every id given, by the same delta", () => {
+    const doc = makeFixture();
+    const [a, b] = doc.paintOrder;
+    if (a === undefined || b === undefined) throw new Error("fixture too small");
+
+    const before = { a: doc.nodes[a]?.presentations.desktop, b: doc.nodes[b]?.presentations.desktop };
+    const next = moveNodesBy(doc, [a, b], 30, -12);
+
+    expect(next.nodes[a]?.presentations.desktop.x).toBe((before.a?.x ?? 0) + 30);
+    expect(next.nodes[b]?.presentations.desktop.y).toBe((before.b?.y ?? 0) - 12);
+  });
+
+  it("leaves nodes outside the selection alone", () => {
+    const doc = makeFixture();
+    const moved = doc.paintOrder[0];
+    if (moved === undefined) throw new Error("empty fixture");
+
+    const next = moveNodesBy(doc, [moved], 50, 50);
+    for (const id of doc.paintOrder.slice(1)) {
+      expect(next.nodes[id]).toEqual(doc.nodes[id]);
+    }
+  });
+
+  it("is one change for the whole selection", () => {
+    const doc = makeFixture();
+    const next = moveNodesBy(doc, doc.paintOrder, 5, 5);
+    expect(next.revisionId).not.toBe(doc.revisionId);
+  });
+
+  it("does nothing for a zero delta or an empty selection", () => {
+    /* A press with no movement must not mark the document dirty. */
+    const doc = makeFixture();
+    expect(moveNodesBy(doc, doc.paintOrder, 0, 0)).toBe(doc);
+    expect(moveNodesBy(doc, [], 10, 10)).toBe(doc);
   });
 });

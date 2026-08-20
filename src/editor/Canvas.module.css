@@ -98,3 +98,15 @@
 .node[data-editing] .text:focus {
   outline: 1px solid #6e8cff;
 }
+
+/* The rubber band. Inside the world transform, so its border would scale with
+   the zoom — `vector-effect` does not apply to a div, so the width is divided
+   by the zoom to keep it a hairline at any scale. */
+.marquee {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  border: calc(1px / var(--zoom, 1)) solid #6e8cff;
+  background-color: rgb(110 140 255 / 12%);
+  pointer-events: none;
+}

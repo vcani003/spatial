@@ -103,6 +103,68 @@ export function setNodeText(
 }
 
 /**
+ * Removes several nodes as ONE change.
+ *
+ * Not a loop over `removeNode` at the call site: that would stamp a revision
+ * per node and, once history is watching, turn deleting a selection of six
+ * into six presses of undo. Selecting things and deleting them is one action
+ * from the person's side, so it is one here.
+ */
+export function removeNodes(
+  doc: SpatialDocument,
+  ids: Iterable<NodeId>,
+): SpatialDocument {
+  const doomed = new Set([...ids].filter((id) => doc.nodes[id] !== undefined));
+  if (doomed.size === 0) return doc;
+
+  const nodes = { ...doc.nodes };
+  for (const id of doomed) delete nodes[id];
+
+  return {
+    ...doc,
+    revisionId: newRevisionId(),
+    nodes,
+    paintOrder: doc.paintOrder.filter((id) => !doomed.has(id)),
+  };
+}
+
+/**
+ * Moves several nodes by the same delta, as one change.
+ *
+ * Same reasoning as `removeNodes`, plus the one that matters during a drag:
+ * with history keyed on the gesture, every frame must be a single commit or
+ * the coalescing has nothing to collapse.
+ */
+export function moveNodesBy(
+  doc: SpatialDocument,
+  ids: Iterable<NodeId>,
+  dx: number,
+  dy: number,
+): SpatialDocument {
+  if (dx === 0 && dy === 0) return doc;
+
+  const nodes = { ...doc.nodes };
+  let moved = false;
+
+  for (const id of ids) {
+    const node = nodes[id];
+    if (node === undefined) continue;
+    const { desktop } = node.presentations;
+    nodes[id] = {
+      ...node,
+      presentations: {
+        ...node.presentations,
+        desktop: { ...desktop, x: desktop.x + dx, y: desktop.y + dy },
+      },
+    };
+    moved = true;
+  }
+
+  if (!moved) return doc;
+  return { ...doc, revisionId: newRevisionId(), nodes };
+}
+
+/**
  * Removes a node, and every reference to it.
  *
  * BOTH HALVES, ALWAYS. §19 lists dangling references as a trap and §17.2 wants

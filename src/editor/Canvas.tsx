@@ -1,5 +1,6 @@
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { NodeId } from "../core/ids";
+import { type Rect, intersects, rectFromCorners } from "../core/geometry";
 import {
   IDENTITY,
   type Viewport,
@@ -9,7 +10,7 @@ import {
   screenToWorld,
   zoomAtScreenPoint,
 } from "../core/viewport";
-import { bringToFront, moveNodeBy, removeNode, setNodeText } from "../core/mutate";
+import { bringToFront, moveNodesBy, removeNode, removeNodes, setNodeText } from "../core/mutate";
 import { type SpatialDocument, nodesInPaintOrder } from "../core/schema";
 import type { SaveState } from "../useDocument";
 import { NodeView } from "./NodeView";
@@ -41,12 +42,25 @@ import styles from "./Canvas.module.css";
  * history". None of them is in the document, and none of them is persisted.
  * ========================================================================== */
 
+/** A pointer event's position inside the surface, in screen pixels. */
+function pointInSurface(
+  event: { clientX: number; clientY: number },
+  surface: HTMLElement | null,
+): { x: number; y: number } {
+  if (surface === null) return { x: event.clientX, y: event.clientY };
+  const rect = surface.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
 type Gesture =
   | { readonly kind: "idle" }
   /** Dragging the background: the world moves under the pointer. */
   | { readonly kind: "pan" }
+  /* Rubber-band selecting. `origin` is where the press landed, in world
+     coordinates, and stays fixed while the other corner follows the pointer. */
+  | { readonly kind: "marquee"; readonly origin: { x: number; y: number }; readonly additive: boolean }
   /** Dragging a node: only that node's geometry changes. */
-  | { readonly kind: "move"; readonly id: NodeId; readonly key: string };
+  | { readonly kind: "move"; readonly ids: readonly NodeId[]; readonly key: string };
 
 /**
  * What the shell above can ask the canvas for.
@@ -92,7 +106,25 @@ export const Canvas = forwardRef<CanvasHandle, {
      handle's identity change on every edit. */
   const docRef = useRef(doc);
   docRef.current = doc;
-  const [selected, setSelected] = useState<NodeId | null>(null);
+  /* A SET, NOT ONE ID. Everything below — dragging, deleting, the outline —
+     treats one selected node as a selection of size one, so there is no
+     "single" path to keep in step with a "multiple" path. */
+  const [selected, setSelected] = useState<ReadonlySet<NodeId>>(() => new Set());
+
+  /* The marquee, in WORLD coordinates. World rather than screen so that
+     zooming or panning mid-drag cannot smear it: the rectangle is anchored to
+     the canvas, not to the window. */
+  const [marquee, setMarquee] = useState<Rect | null>(null);
+  const marqueeRef = useRef<Rect | null>(null);
+  marqueeRef.current = marquee;
+
+  /* Read by the key handler, which is bound once and must not re-bind on every
+     selection change. */
+  const selectedRef = useRef<ReadonlySet<NodeId>>(selected);
+  selectedRef.current = selected;
+
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   /* Which node is being typed into, if any. Editor state, not document state —
      §15 puts transient selection on this side of the line and this is the same
@@ -116,37 +148,6 @@ export const Canvas = forwardRef<CanvasHandle, {
   /* Pointer position is read from movementX/Y rather than tracked by hand.
      The browser already computes the delta, and it stays correct across the
      edges of the window in a way a remembered "last position" does not. */
-  const onPointerMove = useCallback(
-    (event: React.PointerEvent) => {
-      const active = gesture.current;
-      if (active.kind === "idle") return;
-
-      if (active.kind === "pan") {
-        setView((current) => panByScreenDelta(current, event.movementX, event.movementY));
-        return;
-      }
-
-      /* THE ZOOM COMES FROM A REF, NOT FROM A STATE UPDATER.
-         This used to read the current zoom by calling `setView` and doing the
-         work inside the updater — which put a side effect in React's render
-         phase, and dropped frames: five pointer moves of +10 landed a node at
-         +40. React is free to call an updater more than once, or to defer it,
-         and neither is compatible with "and also mutate the document while
-         you are in there".
-
-         Divide by zoom: a node must stay under the pointer at every zoom
-         level. Same arithmetic `panByScreenDelta` does, same bug if forgotten. */
-      const { zoom } = viewRef.current;
-      /* Keyed by the gesture, so every frame of one drag is a single undo
-         step — and the next drag gets a new key and its own step. */
-      onChange(
-        moveNodeBy(doc, active.id, event.movementX / zoom, event.movementY / zoom),
-        active.key,
-      );
-    },
-    [doc, onChange],
-  );
-
   const onEditStart = useCallback((id: NodeId) => {
     gestureSeq.current += 1;
     editKey.current = `text:${id}:${String(gestureSeq.current)}`;
@@ -161,17 +162,6 @@ export const Canvas = forwardRef<CanvasHandle, {
     },
     [editing, onChange],
   );
-
-  /* `beginEdit` is called from the imperative handle, whose identity must not
-     change on every edit — so it reads the current callback from a ref rather
-     than closing over it. */
-  const onEditStartRef = useRef(onEditStart);
-  onEditStartRef.current = onEditStart;
-
-  /* Read through a ref for the same reason: `onPointerDown` is memoised with
-     no dependencies so a drag never re-binds mid-gesture, and it still needs
-     the current exit path. */
-  const onEditDoneRef = useRef<() => void>(() => undefined);
 
   /**
    * THE ONE WAY OUT OF EDITING, and it has to be the only one.
@@ -191,29 +181,88 @@ export const Canvas = forwardRef<CanvasHandle, {
     setEditing(null);
     if (id === null) return;
 
-    /* AN EMPTY TEXT NODE IS REMOVED, and that is not tidiness. It renders as
-       nothing, so it cannot be seen, selected or double-clicked — invisible
-       state that only a diagnostic could ever find again, which is precisely
-       what §19 says must not be able to accumulate. Deleting everything and
-       clicking away is how a person says "never mind"; the node going with it
-       is what they meant, and undo brings it back in one step because the
-       removal shares the edit's key. */
     const node = docRef.current.nodes[id];
     if (node?.content.kind === "text" && node.content.text.trim() === "") {
       onChange(removeNode(docRef.current, id), editKey.current);
-      setSelected((current) => (current === id ? null : current));
+      setSelected((current) => {
+        if (!current.has(id)) return current;
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
     }
   }, [editing, onChange]);
 
+  /* Both are read through refs by handlers that are memoised with no
+     dependencies — a drag must not re-bind mid-gesture, and the imperative
+     handle's identity must not change on every edit. */
+  const onEditStartRef = useRef(onEditStart);
+  onEditStartRef.current = onEditStart;
+
+  const onEditDoneRef = useRef<() => void>(() => undefined);
   onEditDoneRef.current = onEditDone;
+
+  const onPointerMove = useCallback(
+    (event: React.PointerEvent) => {
+      const active = gesture.current;
+      if (active.kind === "idle") return;
+
+      if (active.kind === "pan") {
+        setView((current) => panByScreenDelta(current, event.movementX, event.movementY));
+        return;
+      }
+
+      if (active.kind === "marquee") {
+        const corner = screenToWorld(
+          pointInSurface(event, surface.current),
+          viewRef.current,
+        );
+        setMarquee(rectFromCorners(active.origin, corner));
+        return;
+      }
+
+      const { zoom } = viewRef.current;
+      /* THE WHOLE SELECTION MOVES, not just the node under the cursor.
+         Dragging one of several selected things and having the others stay
+         behind is the kind of surprise that makes people stop trusting a
+         selection. Keyed by the gesture, so every frame of the drag is one
+         undo step. */
+      onChange(
+        moveNodesBy(
+          doc,
+          active.ids,
+          event.movementX / zoom,
+          event.movementY / zoom,
+        ),
+        active.key,
+      );
+    },
+    [doc, onChange],
+  );
 
   const onPointerDown = useCallback((event: React.PointerEvent) => {
     /* Capture on the surface so a fast drag that outruns the cursor keeps
        delivering moves instead of dropping the gesture on the first frame
        the pointer leaves the element. */
     event.currentTarget.setPointerCapture(event.pointerId);
+
+    /* SHIFT DRAGS A MARQUEE; a plain drag still pans.
+       The other way round is what design tools do, and it would take panning
+       away from a canvas that has had it since the first commit. Shift is
+       already "add to what is selected" on a click, so it means the same thing
+       on a drag. */
+    if (event.shiftKey) {
+      const origin = screenToWorld(
+        pointInSurface(event, surface.current),
+        viewRef.current,
+      );
+      gesture.current = { kind: "marquee", origin, additive: event.metaKey || event.ctrlKey };
+      setMarquee({ x: origin.x, y: origin.y, width: 0, height: 0 });
+      return;
+    }
+
     gesture.current = { kind: "pan" };
-    setSelected(null);
+    setSelected(new Set());
     /* Ends any edit properly, including removing a node that was never typed
        into. Clearing the state directly is what left empty nodes behind. */
     onEditDoneRef.current();
@@ -223,7 +272,43 @@ export const Canvas = forwardRef<CanvasHandle, {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+
+    const active = gesture.current;
     gesture.current = { kind: "idle" };
+    if (active.kind !== "marquee") return;
+
+    const box = marqueeRef.current;
+    setMarquee(null);
+    if (box === null) return;
+
+    /* MEASURED, NOT COMPUTED — the same reason `fit` measures. A text node's
+       height is intrinsic and `core` never knows it, so what the marquee
+       caught can only be decided against what was actually laid out.
+       `offsetWidth/offsetHeight` are layout values, unaffected by the
+       ancestor's scale, so they are already in world units. */
+    const surfaceEl = surface.current;
+    if (surfaceEl === null) return;
+
+    const caught = new Set<NodeId>();
+    for (const element of surfaceEl.querySelectorAll<HTMLElement>("[data-node-id]")) {
+      const id = element.dataset.nodeId as NodeId | undefined;
+      if (id === undefined) continue;
+      const placement = docRef.current.nodes[id]?.presentations.desktop;
+      if (placement === undefined) continue;
+
+      if (
+        intersects(box, {
+          x: placement.x,
+          y: placement.y,
+          width: element.offsetWidth,
+          height: element.offsetHeight,
+        })
+      ) {
+        caught.add(id);
+      }
+    }
+
+    setSelected((current) => (active.additive ? new Set([...current, ...caught]) : caught));
   }, []);
 
   const onNodePointerDown = useCallback(
@@ -231,17 +316,47 @@ export const Canvas = forwardRef<CanvasHandle, {
       /* The background handler would otherwise start a pan underneath this. */
       event.stopPropagation();
       surface.current?.setPointerCapture(event.pointerId);
+      onEditDoneRef.current();
+
+      const extend = event.shiftKey || event.metaKey || event.ctrlKey;
+
+      /* WHAT THE PRESS SELECTS, decided before the drag begins so the gesture
+         moves the right things:
+
+           shift/⌘ on an unselected node   adds it
+           shift/⌘ on a selected node      removes it, and drags nothing
+           a plain press on a selected node keeps the whole selection, so
+             dragging a group by one of its members moves the group
+           a plain press on anything else  selects just that one */
+      let next: Set<NodeId>;
+      if (extend) {
+        next = new Set(selected);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      } else {
+        next = selected.has(id) ? new Set(selected) : new Set([id]);
+      }
+      setSelected(next);
+
+      const ids = [...next];
+      if (!next.has(id) || ids.length === 0) {
+        /* Deselected by that press — there is nothing to drag. */
+        gesture.current = { kind: "idle" };
+        return;
+      }
+
       gestureSeq.current += 1;
-      const key = `move:${id}:${String(gestureSeq.current)}`;
-      gesture.current = { kind: "move", id, key };
-      setSelected(id);
-      /* THE RAISE CARRIES THE GESTURE'S KEY TOO. Pressing a node and dragging
-         it is one action from the visitor's side; recording the raise
-         separately would make every drag take two presses of undo, the first
-         of which appears to do nothing. */
-      onChange(bringToFront(doc, id), key);
+      gesture.current = {
+        kind: "move",
+        ids,
+        key: `move:${String(gestureSeq.current)}`,
+      };
+
+      /* Raising only makes sense for one node; doing it for a group would
+         reorder the group against itself for no reason anyone asked for. */
+      if (ids.length === 1) onChange(bringToFront(doc, id), gesture.current.key);
     },
-    [doc, onChange],
+    [doc, onChange, selected],
   );
 
   const onWheel = useCallback((event: React.WheelEvent) => {
@@ -325,6 +440,47 @@ export const Canvas = forwardRef<CanvasHandle, {
     [],
   );
 
+  /* DELETE AND ESCAPE.
+     On the window rather than the surface: the canvas is not focusable, so a
+     key pressed after clicking a node would otherwise reach nothing. It
+     declines while a text field or the editor has focus — Backspace there is
+     deleting characters, and Escape is leaving the editor. */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+
+      if (event.key === "Escape") {
+        setSelected(new Set());
+        return;
+      }
+
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      const ids = [...selectedRef.current];
+      if (ids.length === 0) return;
+
+      /* Backspace still scrolls back a page in some setups. */
+      event.preventDefault();
+      gestureSeq.current += 1;
+      onChangeRef.current(
+        removeNodes(docRef.current, ids),
+        `delete:${String(gestureSeq.current)}`,
+      );
+      setSelected(new Set());
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   const origin = screenToWorld({ x: 0, y: 0 }, view);
 
   return (
@@ -347,13 +503,33 @@ export const Canvas = forwardRef<CanvasHandle, {
     >
       <div
         className={styles.world}
-        style={{ transform: `scale(${view.zoom}) translate(${-view.pan.x}px, ${-view.pan.y}px)` }}
+        style={
+          {
+            transform: `scale(${view.zoom}) translate(${-view.pan.x}px, ${-view.pan.y}px)`,
+            /* Read by `.marquee`, whose border would otherwise thicken with
+               the zoom like everything else inside this transform. */
+            "--zoom": view.zoom,
+          } as React.CSSProperties
+        }
       >
+        {/* Drawn INSIDE the world transform, so it stays anchored to the
+            canvas if the view moves mid-drag rather than smearing across it. */}
+        {marquee !== null && (
+          <div
+            className={styles.marquee}
+            style={{
+              transform: `translate(${String(marquee.x)}px, ${String(marquee.y)}px)`,
+              width: marquee.width,
+              height: marquee.height,
+            }}
+          />
+        )}
+
         {nodesInPaintOrder(doc).map((node) => (
           <NodeView
             key={node.id}
             node={node}
-            selected={node.id === selected}
+            selected={selected.has(node.id)}
             editing={node.id === editing}
             onPointerDown={onNodePointerDown}
             onEditStart={onEditStart}
