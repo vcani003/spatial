@@ -147,14 +147,19 @@ describe("dragging a node", () => {
     }
   });
 
-  it("raises the grabbed node to the front without changing its geometry", () => {
+  it("does not raise — or change anything — on a press alone", () => {
+    /* Pressing a node used to raise it to the front, which rewrites paintOrder
+       and therefore records an undo step. That put a step in the history for
+       merely CLICKING, so every click between two real edits became something
+       to undo past. Selection is editor state; the raise moved to the first
+       actual movement. See selection.test.tsx. */
     const app = mount();
     const id = idOf(app.initial, "Spatial");
 
     fireEvent.pointerDown(app.nodeEl("Spatial"), { ...POINTER, clientX: 0, clientY: 0 });
 
-    const order = app.current().paintOrder;
-    expect(order[order.length - 1]).toBe(id);
+    expect(app.current()).toBe(app.initial);
+    expect(app.onChange).not.toHaveBeenCalled();
     expect(app.placement(id)).toEqual(app.initial.nodes[id]?.presentations.desktop);
   });
 });

@@ -158,6 +158,64 @@ describe("selecting", () => {
   });
 });
 
+describe("selecting does not touch the document", () => {
+  it("records no history for a click", () => {
+    /* THE REGRESSION THIS EXISTS FOR, reported as: "delete one element, select
+       another two, and it takes THREE undos to see the first one again."
+
+       Pressing a node used to raise it to the front immediately. Raising
+       rewrites paintOrder, which is a document change, which is an undo step —
+       so every click between two real edits became something to undo past.
+       Selection is editor state and must not reach the document. */
+    const app = mount();
+    press(app.box("Spatial"));
+    release(app.surface);
+    press(app.box("An infinite"));
+    release(app.surface);
+
+    expect(app.steps()).toBe(0);
+    expect(app.doc()).toBe(app.initial);
+  });
+
+  it("takes exactly one undo per real edit, whatever is clicked between them", () => {
+    /* The reported sequence, end to end. */
+    const app = mount();
+    const first = idOf(app.initial, "Spatial");
+
+    press(app.box("Spatial"));
+    release(app.surface);
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(app.doc().nodes[first]).toBeUndefined();
+
+    press(app.box("An infinite"));
+    release(app.surface);
+    press(app.box("figure 1"), { shiftKey: true });
+    release(app.surface);
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    /* Two deletions, two undos — not four, and not three. */
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(app.doc().nodes[first]).toBeDefined();
+    expect(app.doc().paintOrder).toHaveLength(app.initial.paintOrder.length);
+  });
+
+  it("still raises a node when a drag actually moves it", () => {
+    /* Raising is a real behaviour, just not one a click should trigger. It is
+       folded into the drag's own step, so it costs no extra undo. */
+    const app = mount();
+    const id = idOf(app.initial, "An infinite");
+    expect(app.doc().paintOrder[app.doc().paintOrder.length - 1]).not.toBe(id);
+
+    press(app.box("An infinite"));
+    fireEvent.pointerMove(app.surface, { ...POINTER, movementX: 12, movementY: 8 });
+    release(app.surface);
+
+    expect(app.doc().paintOrder[app.doc().paintOrder.length - 1]).toBe(id);
+    expect(app.steps()).toBe(1);
+  });
+});
+
 describe("dragging a selection", () => {
   it("moves every selected node, not just the one under the cursor", () => {
     /* Dragging one of several selected things and having the others stay put

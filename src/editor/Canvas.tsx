@@ -60,7 +60,14 @@ type Gesture =
      coordinates, and stays fixed while the other corner follows the pointer. */
   | { readonly kind: "marquee"; readonly origin: { x: number; y: number }; readonly additive: boolean }
   /** Dragging a node: only that node's geometry changes. */
-  | { readonly kind: "move"; readonly ids: readonly NodeId[]; readonly key: string };
+  | {
+      readonly kind: "move";
+      readonly ids: readonly NodeId[];
+      readonly key: string;
+      /* Whether this gesture has raised its node yet. Raising happens on the
+         first actual movement, not on the press — see `onNodePointerDown`. */
+      raised: boolean;
+    };
 
 /**
  * What the shell above can ask the canvas for.
@@ -228,22 +235,30 @@ export const Canvas = forwardRef<CanvasHandle, {
       }
 
       const { zoom } = viewRef.current;
+
       /* THE WHOLE SELECTION MOVES, not just the node under the cursor.
          Dragging one of several selected things and having the others stay
-         behind is the kind of surprise that makes people stop trusting a
-         selection. Keyed by the gesture, so every frame of the drag is one
-         undo step. */
-      onChange(
-        moveNodesBy(
-          doc,
-          active.ids,
-          event.movementX / zoom,
-          event.movementY / zoom,
-        ),
-        active.key,
-      );
+         behind is the surprise that makes people stop trusting a selection.
+         Keyed by the gesture, so every frame of the drag is one undo step. */
+      let next = docRef.current;
+
+      /* RAISED ON THE FIRST MOVEMENT, not on the press, so a click leaves the
+         document alone. Applied to the same value the move is computed from
+         and committed once under the gesture's key, so the raise and the drag
+         are a single undo step rather than two.
+
+         Single node only: raising a group would reorder it against itself for
+         no reason anyone asked for. */
+      if (!active.raised && active.ids.length === 1) {
+        const only = active.ids[0];
+        if (only !== undefined) next = bringToFront(next, only);
+        active.raised = true;
+      }
+
+      next = moveNodesBy(next, active.ids, event.movementX / zoom, event.movementY / zoom);
+      onChange(next, active.key);
     },
-    [doc, onChange],
+    [onChange],
   );
 
   const onPointerDown = useCallback((event: React.PointerEvent) => {
@@ -356,13 +371,23 @@ export const Canvas = forwardRef<CanvasHandle, {
         kind: "move",
         ids,
         key: `move:${String(gestureSeq.current)}`,
+        raised: false,
       };
 
-      /* Raising only makes sense for one node; doing it for a group would
-         reorder the group against itself for no reason anyone asked for. */
-      if (ids.length === 1) onChange(bringToFront(doc, id), gesture.current.key);
+      /* NOTHING IS WRITTEN TO THE DOCUMENT HERE, and that is the fix for a
+         real complaint: "delete one thing, select two more, and it takes three
+         undos to get the first back."
+
+         This used to raise the pressed node to the front immediately. Raising
+         changes `paintOrder`, which is a document change, which is an undo
+         step — so merely CLICKING a node put a step in the history, and every
+         click between two real edits became something to undo past.
+         Selecting is editor state; it must not touch the document.
+
+         The raise now happens on the first actual movement, folded into that
+         drag's own step. See `onPointerMove`. */
     },
-    [doc, onChange, selected],
+    [selected],
   );
 
   const onWheel = useCallback((event: React.WheelEvent) => {
